@@ -5,42 +5,105 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"unicode"
 	// bencode "github.com/jackpal/bencode-go" // Available if you need it!
 )
 
-// Example:
-// - 5:hello -> hello
-// - 10:hello12345 -> hello12345
-func decodeBencode(bencodedString string) (any, error) {
-	if unicode.IsDigit(rune(bencodedString[0])) {
+var (
+	dictionaryBencodeIdentifier = byte('d')
+	integerBencodeIdentifier    = byte('i')
+	listBencodeIdentifier       = byte('l')
+	endOfIdentifier             = byte('e')
+	columnIdentifier            = byte(':')
+)
+
+type decoder struct {
+	data []byte
+	pos  int
+	err  error
+}
+
+func (d *decoder) decode() any {
+	if d.err != nil {
+		return nil
+	}
+
+	inputType := d.peekByte()
+
+	switch inputType {
+	case dictionaryBencodeIdentifier:
+		d.err = fmt.Errorf("dictionary is not supported")
+		return nil
+	case integerBencodeIdentifier:
+		d.readByte()
+		startPos := d.pos
+		var endOfNumber int
+
+		for i := d.pos; i < len(d.data); i++ {
+			if d.readByte() == endOfIdentifier {
+				endOfNumber = i
+				break
+			}
+		}
+
+		number, err := strconv.Atoi(string(d.data[startPos:endOfNumber]))
+		if err != nil {
+			d.err = err
+			return nil
+		}
+
+		return number
+	case listBencodeIdentifier:
+		d.readByte()
+		result := []any{}
+
+		for {
+			if d.err != nil {
+				break
+			}
+
+			if d.peekByte() == endOfIdentifier {
+				d.readByte()
+				break
+			}
+
+			val := d.decode()
+			result = append(result, val)
+		}
+
+		return result
+	default:
+		initialPos := d.pos
 		var firstColonIndex int
 
-		for i := 0; i < len(bencodedString); i++ {
-			if bencodedString[i] == ':' {
+		for i := d.pos; i < len(d.data); i++ {
+			if d.readByte() == columnIdentifier {
 				firstColonIndex = i
 				break
 			}
 		}
 
-		lengthStr := bencodedString[:firstColonIndex]
+		lengthStr := d.data[initialPos:firstColonIndex]
 
-		length, err := strconv.Atoi(lengthStr)
+		length, err := strconv.Atoi(string(lengthStr))
 		if err != nil {
-			return "", err
+			d.err = err
+			return nil
 		}
 
-		return bencodedString[firstColonIndex+1 : firstColonIndex+1+length], nil
-	} else if bencodedString[0] == 'i' {
-		number, err := strconv.Atoi(bencodedString[1 : len(bencodedString)-1])
-		if err != nil {
-			return "", err
-		}
-
-		return number, nil
-	} else {
-		return "", fmt.Errorf("Only strings are supported at the moment")
+		d.pos += length
+		return string(d.data[firstColonIndex+1 : d.pos])
 	}
+}
+
+func (d *decoder) readByte() byte {
+	b := d.data[d.pos]
+	d.pos++
+	return b
+}
+
+func (d *decoder) peekByte() byte {
+	b := d.data[d.pos]
+	return b
 }
 
 func main() {
@@ -49,9 +112,14 @@ func main() {
 	if command == "decode" {
 		bencodedValue := os.Args[2]
 
-		decoded, err := decodeBencode(bencodedValue)
-		if err != nil {
-			fmt.Println(err)
+		dec := decoder{
+			data: []byte(bencodedValue),
+		}
+
+		decoded := dec.decode()
+
+		if dec.err != nil {
+			fmt.Println(dec.err)
 			return
 		}
 
