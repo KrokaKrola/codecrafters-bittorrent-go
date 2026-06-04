@@ -8,6 +8,27 @@ import (
 	// bencode "github.com/jackpal/bencode-go" // Available if you need it!
 )
 
+type dictionaryValue struct {
+	key   string
+	value any
+}
+
+type dictionary []dictionaryValue
+
+func (d dictionary) toMap() map[string]any {
+	result := make(map[string]any)
+
+	for _, el := range d {
+		if innerDict, ok := el.value.(dictionary); ok {
+			el.value = innerDict.toMap()
+		}
+
+		result[el.key] = el.value
+	}
+
+	return result
+}
+
 var (
 	dictionaryBencodeIdentifier = byte('d')
 	integerBencodeIdentifier    = byte('i')
@@ -27,12 +48,50 @@ func (d *decoder) decode() any {
 		return nil
 	}
 
+	if d.pos >= len(d.data) {
+		d.err = fmt.Errorf("invalid input format: %s", d.data)
+		return nil
+	}
+
 	inputType := d.peekByte()
 
 	switch inputType {
 	case dictionaryBencodeIdentifier:
-		d.err = fmt.Errorf("dictionary is not supported")
-		return nil
+		d.readByte()
+		result := dictionary{}
+
+		for {
+			if d.err != nil {
+				return nil
+			}
+
+			if d.pos >= len(d.data) {
+				d.err = fmt.Errorf("invalid dictionary format: %s", d.data)
+				return nil
+			}
+
+			if d.peekByte() == endOfIdentifier {
+				d.readByte()
+				break
+			}
+
+			key, ok := d.decode().(string)
+			if !ok {
+				d.err = fmt.Errorf("invalid dictionary format, each key must be string type: %s", d.data)
+				return nil
+			}
+
+			value := d.decode()
+			result = append(result, struct {
+				key   string
+				value any
+			}{
+				key,
+				value,
+			})
+		}
+
+		return result
 	case integerBencodeIdentifier:
 		d.readByte()
 		startPos := d.pos
@@ -43,6 +102,11 @@ func (d *decoder) decode() any {
 				endOfNumber = i
 				break
 			}
+		}
+
+		if endOfNumber == 0 {
+			d.err = fmt.Errorf("invalid number format: %s", d.data)
+			return nil
 		}
 
 		number, err := strconv.Atoi(string(d.data[startPos:endOfNumber]))
@@ -58,7 +122,12 @@ func (d *decoder) decode() any {
 
 		for {
 			if d.err != nil {
-				break
+				return nil
+			}
+
+			if d.pos >= len(d.data) {
+				d.err = fmt.Errorf("invalid list format: %s", d.data)
+				return nil
 			}
 
 			if d.peekByte() == endOfIdentifier {
@@ -87,6 +156,11 @@ func (d *decoder) decode() any {
 		length, err := strconv.Atoi(string(lengthStr))
 		if err != nil {
 			d.err = err
+			return nil
+		}
+
+		if d.pos+length > len(d.data) {
+			d.err = fmt.Errorf("invalid string length: %d", length)
 			return nil
 		}
 
@@ -121,6 +195,10 @@ func main() {
 		if dec.err != nil {
 			fmt.Println(dec.err)
 			return
+		}
+
+		if _, ok := decoded.(dictionary); ok {
+			decoded = decoded.(dictionary).toMap()
 		}
 
 		jsonOutput, _ := json.Marshal(decoded)
