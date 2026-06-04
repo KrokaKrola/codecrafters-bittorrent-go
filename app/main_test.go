@@ -121,10 +121,11 @@ func TestBencodedList(t *testing.T) {
 			t.Fatal("expected array from decode, got nil")
 		}
 
-		for i, el := range gotList {
-			if el != want[i] {
-				t.Fatalf("expected el[%d] to equal %s, got %s", i, want[i], el)
-			}
+		jsonWant, _ := json.Marshal(want)
+		jsonGot, _ := json.Marshal(gotList)
+
+		if string(jsonGot) != string(jsonWant) {
+			t.Fatalf("expected got=%s, to eqal want=%s", jsonGot, jsonWant)
 		}
 	})
 
@@ -141,19 +142,11 @@ func TestBencodedList(t *testing.T) {
 			t.Fatal("expected array from decode, got nil")
 		}
 
-		for i, el := range gotList {
-			// converting curr element to []any type
-			l, ok := el.([]any)
-			if !ok {
-				t.Fatalf("expected el[%d] to equal %s, got %s", i, want[i], el)
-			}
+		jsonWant, _ := json.Marshal(want)
+		jsonGot, _ := json.Marshal(gotList)
 
-			// converting want[i] to any type
-			w := want[i].([]any)
-
-			if l[i] != w[i] {
-				t.Fatalf("expected el[%d] to equal %s, got %s", i, want[i], el)
-			}
+		if string(jsonGot) != string(jsonWant) {
+			t.Fatalf("expected got=%s, to eqal want=%s", jsonGot, jsonWant)
 		}
 	})
 

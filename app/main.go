@@ -29,7 +29,7 @@ func (d dictionary) toMap() map[string]any {
 	return result
 }
 
-var (
+const (
 	dictionaryBencodeIdentifier = byte('d')
 	integerBencodeIdentifier    = byte('i')
 	listBencodeIdentifier       = byte('l')
@@ -183,7 +183,46 @@ func (d *decoder) peekByte() byte {
 func main() {
 	command := os.Args[1]
 
-	if command == "decode" {
+	switch command {
+	case "info":
+		fileName := os.Args[2]
+
+		if fileName == "" {
+			fmt.Println("Empty file name")
+			os.Exit(1)
+		}
+
+		data, err := os.ReadFile(fileName)
+		if err != nil {
+			fmt.Println("Error while trying to read file:" + err.Error())
+			os.Exit(1)
+		}
+
+		dec := decoder{
+			data: data,
+		}
+
+		var dict map[string]any
+
+		if res, ok := dec.decode().(dictionary); ok {
+			dict = res.toMap()
+		} else {
+			fmt.Println("Invalid file content")
+			os.Exit(1)
+		}
+
+		var info map[string]any
+
+		if val, ok := dict["info"].(map[string]any); ok {
+			info = val
+		} else {
+			fmt.Println("Invalid info block in file content")
+			os.Exit(1)
+		}
+
+		fmt.Println("Tracker URL:", dict["announce"])
+		fmt.Println("Length:", info["length"])
+	case "decode":
 		bencodedValue := os.Args[2]
 
 		dec := decoder{
@@ -203,7 +242,7 @@ func main() {
 
 		jsonOutput, _ := json.Marshal(decoded)
 		fmt.Println(string(jsonOutput))
-	} else {
+	default:
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
 	}
