@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -219,4 +221,50 @@ func TestBencodedDict(t *testing.T) {
 			t.Fatalf("expected got=%s, to eqal want=%s", jsonGot, jsonWant)
 		}
 	})
+}
+
+func TestEncode(t *testing.T) {
+	t.Run("dictionary encode", func(t *testing.T) {
+		want := "d10:inner_dictd4:key16:value14:key2i42e8:list_keyl5:item15:item2i3eeee"
+		input := dictionary{
+			dictionaryValue{
+				key: "inner_dict",
+				value: dictionary{
+					dictionaryValue{
+						key:   "key1",
+						value: "value1",
+					},
+					dictionaryValue{
+						key:   "key2",
+						value: 42,
+					},
+					dictionaryValue{
+						key:   "list_key",
+						value: []any{"item1", "item2", 3},
+					},
+				},
+			},
+		}
+
+		got, _ := encode(input)
+		if got != want {
+			t.Fatalf("expected got=%s, to eqal want=%s", got, want)
+		}
+	})
+}
+
+var benchInput = []byte("d10:inner_dictd4:key16:value14:key2i42e8:list_keyl5:item15:item2i3eeee")
+
+func BenchmarkDecoder(b *testing.B) {
+	for b.Loop() {
+		dec := &decoder{data: benchInput}
+		dec.decode()
+	}
+}
+
+func BenchmarkReaderDecoder(b *testing.B) {
+	for b.Loop() {
+		dec := &readerDecoder{r: bufio.NewReader(bytes.NewReader(benchInput))}
+		dec.decode()
+	}
 }

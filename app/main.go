@@ -4,183 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
 	// bencode "github.com/jackpal/bencode-go" // Available if you need it!
 )
 
-type dictionaryValue struct {
-	key   string
-	value any
-}
-
-type dictionary []dictionaryValue
-
-func (d dictionary) toMap() map[string]any {
-	result := make(map[string]any)
-
-	for _, el := range d {
-		if innerDict, ok := el.value.(dictionary); ok {
-			el.value = innerDict.toMap()
-		}
-
-		result[el.key] = el.value
-	}
-
-	return result
-}
-
-const (
-	dictionaryBencodeIdentifier = byte('d')
-	integerBencodeIdentifier    = byte('i')
-	listBencodeIdentifier       = byte('l')
-	endOfIdentifier             = byte('e')
-	columnIdentifier            = byte(':')
-)
-
-type decoder struct {
-	data []byte
-	pos  int
-	err  error
-}
-
-func (d *decoder) decode() any {
-	if d.err != nil {
-		return nil
-	}
-
-	if d.pos >= len(d.data) {
-		d.err = fmt.Errorf("invalid input format: %s", d.data)
-		return nil
-	}
-
-	inputType := d.peekByte()
-
-	switch inputType {
-	case dictionaryBencodeIdentifier:
-		d.readByte()
-		result := dictionary{}
-
-		for {
-			if d.err != nil {
-				return nil
-			}
-
-			if d.pos >= len(d.data) {
-				d.err = fmt.Errorf("invalid dictionary format: %s", d.data)
-				return nil
-			}
-
-			if d.peekByte() == endOfIdentifier {
-				d.readByte()
-				break
-			}
-
-			key, ok := d.decode().(string)
-			if !ok {
-				d.err = fmt.Errorf("invalid dictionary format, each key must be string type: %s", d.data)
-				return nil
-			}
-
-			value := d.decode()
-			result = append(result, struct {
-				key   string
-				value any
-			}{
-				key,
-				value,
-			})
-		}
-
-		return result
-	case integerBencodeIdentifier:
-		d.readByte()
-		startPos := d.pos
-		var endOfNumber int
-
-		for i := d.pos; i < len(d.data); i++ {
-			if d.readByte() == endOfIdentifier {
-				endOfNumber = i
-				break
-			}
-		}
-
-		if endOfNumber == 0 {
-			d.err = fmt.Errorf("invalid number format: %s", d.data)
-			return nil
-		}
-
-		number, err := strconv.Atoi(string(d.data[startPos:endOfNumber]))
-		if err != nil {
-			d.err = err
-			return nil
-		}
-
-		return number
-	case listBencodeIdentifier:
-		d.readByte()
-		result := []any{}
-
-		for {
-			if d.err != nil {
-				return nil
-			}
-
-			if d.pos >= len(d.data) {
-				d.err = fmt.Errorf("invalid list format: %s", d.data)
-				return nil
-			}
-
-			if d.peekByte() == endOfIdentifier {
-				d.readByte()
-				break
-			}
-
-			val := d.decode()
-			result = append(result, val)
-		}
-
-		return result
-	default:
-		initialPos := d.pos
-		var firstColonIndex int
-
-		for i := d.pos; i < len(d.data); i++ {
-			if d.readByte() == columnIdentifier {
-				firstColonIndex = i
-				break
-			}
-		}
-
-		lengthStr := d.data[initialPos:firstColonIndex]
-
-		length, err := strconv.Atoi(string(lengthStr))
-		if err != nil {
-			d.err = err
-			return nil
-		}
-
-		if d.pos+length > len(d.data) {
-			d.err = fmt.Errorf("invalid string length: %d", length)
-			return nil
-		}
-
-		d.pos += length
-		return string(d.data[firstColonIndex+1 : d.pos])
-	}
-}
-
-func (d *decoder) readByte() byte {
-	b := d.data[d.pos]
-	d.pos++
-	return b
-}
-
-func (d *decoder) peekByte() byte {
-	b := d.data[d.pos]
-	return b
-}
-
 func main() {
+	if len(os.Args) < 2 {
+		fmt.Println("Invalid number of arguments")
+		os.Exit(1)
+	}
+
 	command := os.Args[1]
 
 	switch command {
@@ -202,26 +34,48 @@ func main() {
 			data: data,
 		}
 
-		var dict map[string]any
+		var dict dictionary
 
 		if res, ok := dec.decode().(dictionary); ok {
-			dict = res.toMap()
+			dict = res
 		} else {
 			fmt.Println("Invalid file content")
 			os.Exit(1)
 		}
 
-		var info map[string]any
-
-		if val, ok := dict["info"].(map[string]any); ok {
-			info = val
-		} else {
-			fmt.Println("Invalid info block in file content")
+		announce, ok := findElementInDictionary[string](dict, "announce")
+		if !ok {
+			fmt.Println("Invalid file content, announce field was not found")
 			os.Exit(1)
 		}
 
-		fmt.Println("Tracker URL:", dict["announce"])
-		fmt.Println("Length:", info["length"])
+		info, ok := findElementInDictionary[dictionary](dict, "info")
+		if !ok {
+			fmt.Println("Invalid file content, info field was not found")
+			os.Exit(1)
+		}
+
+		length, ok := findElementInDictionary[int](info, "length")
+		if !ok {
+			fmt.Println("Invalid file content, info.length field was not found")
+			os.Exit(1)
+		}
+
+		encodedInfo, err := encode(info)
+		if err != nil {
+			fmt.Println("Error while trying to encode info content")
+			os.Exit(1)
+		}
+
+		hash, err := createSha1Hash(encodedInfo)
+		if err != nil {
+			fmt.Println("Error while trying to create hash from info content")
+			os.Exit(1)
+		}
+
+		fmt.Println("Tracker URL:", announce)
+		fmt.Println("Length:", length)
+		fmt.Println("Info Hash:", hash)
 	case "decode":
 		bencodedValue := os.Args[2]
 
