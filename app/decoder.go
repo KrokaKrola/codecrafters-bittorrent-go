@@ -28,6 +28,7 @@ func (d dictionary) toMap() map[string]any {
 
 func findElementInDictionary[T any](d dictionary, key string) (T, bool) {
 	var res T
+
 	for _, el := range d {
 		if el.key == key {
 			if value, ok := el.value.(T); ok {

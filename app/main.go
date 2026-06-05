@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -61,13 +62,31 @@ func main() {
 			os.Exit(1)
 		}
 
+		pieceLength, ok := findElementInDictionary[int](info, "piece length")
+		if !ok {
+			fmt.Println("Invalid file content, info['piece length'] field was not found")
+			os.Exit(1)
+		}
+
+		pieces, ok := findElementInDictionary[string](info, "pieces")
+		if !ok {
+			fmt.Println("Invalid file content, info['pieces'] field was not found")
+			os.Exit(1)
+		}
+
+		var encodedPieces []string
+
+		for i := 0; i < len(pieces); i += 20 {
+			encodedPieces = append(encodedPieces, hex.EncodeToString([]byte(pieces[i:i+20])))
+		}
+
 		encodedInfo, err := encode(info)
 		if err != nil {
 			fmt.Println("Error while trying to encode info content")
 			os.Exit(1)
 		}
 
-		hash, err := createSha1Hash(encodedInfo)
+		hash, err := createSha1HashFromString(encodedInfo)
 		if err != nil {
 			fmt.Println("Error while trying to create hash from info content")
 			os.Exit(1)
@@ -76,6 +95,11 @@ func main() {
 		fmt.Println("Tracker URL:", announce)
 		fmt.Println("Length:", length)
 		fmt.Println("Info Hash:", hash)
+		fmt.Println("Piece Length:", pieceLength)
+		fmt.Println("Piece Hashes:")
+		for _, el := range encodedPieces {
+			fmt.Println(el)
+		}
 	case "decode":
 		bencodedValue := os.Args[2]
 

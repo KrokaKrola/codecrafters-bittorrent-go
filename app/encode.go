@@ -67,14 +67,16 @@ func encode(input any) (string, error) {
 	}
 }
 
-func createSha1Hash(input string) (string, error) {
+func createSha1HashFromString(input string) (string, error) {
+	return createSha1Hash([]byte(input))
+}
+
+func createSha1Hash(input []byte) (string, error) {
 	hash := sha1.New()
 
-	if _, err := hash.Write([]byte(input)); err != nil {
+	if _, err := hash.Write(input); err != nil {
 		return "", err
 	}
 
-	hashedData := hash.Sum(nil)
-
-	return hex.EncodeToString(hashedData), nil
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }
