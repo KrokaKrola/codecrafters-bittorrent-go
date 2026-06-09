@@ -1,15 +1,17 @@
 [
   {
     "adapter": "Delve",
-    "label": "go run ./app handshake",
+    "label": "go run ./app download_piece",
     "request": "launch",
     "mode": "debug",
     "program": "${ZED_WORKTREE_ROOT}/app",
     "cwd": "$ZED_DIRNAME",
     "args": [
-      "handshake",
+      "download_piece",
+      "-o",
+      "/Users/oleh.kotlinskiy/Projects/codecrafters-bittorrent-go/piece",
       "/Users/oleh.kotlinskiy/Projects/codecrafters-bittorrent-go/sample.torrent",
-      "165.232.38.164:51433",
+      "1",
     ],
     "buildFlags": [],
     "env": {},
