@@ -1,10 +1,15 @@
 package main
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"os"
+	"strconv"
 	// bencode "github.com/jackpal/bencode-go" // Available if you need it!
 )
 
@@ -17,6 +22,100 @@ func main() {
 	command := os.Args[1]
 
 	switch command {
+	case "peers":
+		fileName := os.Args[2]
+
+		if fileName == "" {
+			fmt.Println("Empty file name")
+			os.Exit(1)
+		}
+
+		btFile := &bitTorrentFile{}
+		err := btFile.parse(fileName)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		encodedInfo, err := encode(btFile.info)
+		if err != nil {
+			fmt.Printf("Error while trying to encode info content: %s", err.Error())
+			os.Exit(1)
+		}
+
+		infoHash, err := createSha1HashFromString(encodedInfo, false)
+		if err != nil {
+			fmt.Println("Error while trying to create hash from info content")
+			os.Exit(1)
+		}
+
+		fmt.Println(infoHash)
+
+		infoLength, ok := findElementInDictionary[int](btFile.info, "length")
+		if !ok {
+			fmt.Println("Length field in info is not found")
+			os.Exit(1)
+		}
+
+		requestUrl, err := url.Parse(btFile.announce)
+		if err != nil {
+			fmt.Printf("Error while parsing announce URL: %s\n", err.Error())
+			os.Exit(1)
+		}
+
+		requestQuery := requestUrl.Query()
+		requestQuery.Set("info_hash", string(infoHash))
+		requestQuery.Set("peer_id", generateId())
+		requestQuery.Set("port", "6881")
+		requestQuery.Set("uploaded", "0")
+		requestQuery.Set("downloaded", "0")
+		requestQuery.Set("left", strconv.Itoa(infoLength))
+		requestQuery.Set("compact", "1")
+
+		requestUrl.RawQuery = requestQuery.Encode()
+
+		client := &http.Client{}
+		request, err := http.NewRequest(http.MethodGet, requestUrl.String(), nil)
+		if err != nil {
+			fmt.Println(err)
+			fmt.Printf("Error during request to announce URL: %s\n", err.Error())
+			os.Exit(1)
+		}
+		response, err := client.Do(request)
+		if err != nil {
+			fmt.Printf("Error during request to announce URL: %s\n", err.Error())
+			os.Exit(1)
+		}
+
+		body, err := io.ReadAll(response.Body)
+		defer response.Body.Close()
+
+		bodyDecoder := &decoder{data: body}
+		res := bodyDecoder.decode()
+
+		dict, ok := res.(dictionary)
+		if !ok {
+			fmt.Println("Invalid response from announce URL")
+			os.Exit(1)
+		}
+
+		peers, ok := findElementInDictionary[string](dict, "peers")
+		if !ok {
+			fmt.Println("Invalid response from announce URL, peers field is not in the response")
+			os.Exit(1)
+		}
+
+		peersAsBytesArr := []byte(peers)
+
+		for i := 0; i < len(peersAsBytesArr); i += 6 {
+			ip1 := peersAsBytesArr[i]
+			ip2 := peersAsBytesArr[i+1]
+			ip3 := peersAsBytesArr[i+2]
+			ip4 := peersAsBytesArr[i+3]
+			port := binary.BigEndian.Uint16(peersAsBytesArr[i+4 : i+6])
+
+			fmt.Printf("%d.%d.%d.%d:%d\n", ip1, ip2, ip3, ip4, port)
+		}
 	case "info":
 		fileName := os.Args[2]
 
@@ -25,75 +124,51 @@ func main() {
 			os.Exit(1)
 		}
 
-		data, err := os.ReadFile(fileName)
+		btFile := &bitTorrentFile{}
+		err := btFile.parse(fileName)
 		if err != nil {
-			fmt.Println("Error while trying to read file:" + err.Error())
-			os.Exit(1)
-		}
-
-		dec := decoder{
-			data: data,
-		}
-
-		var dict dictionary
-
-		if res, ok := dec.decode().(dictionary); ok {
-			dict = res
-		} else {
-			fmt.Println("Invalid file content")
-			os.Exit(1)
-		}
-
-		announce, ok := findElementInDictionary[string](dict, "announce")
-		if !ok {
-			fmt.Println("Invalid file content, announce field was not found")
-			os.Exit(1)
-		}
-
-		info, ok := findElementInDictionary[dictionary](dict, "info")
-		if !ok {
-			fmt.Println("Invalid file content, info field was not found")
-			os.Exit(1)
-		}
-
-		length, ok := findElementInDictionary[int](info, "length")
-		if !ok {
-			fmt.Println("Invalid file content, info.length field was not found")
-			os.Exit(1)
-		}
-
-		pieceLength, ok := findElementInDictionary[int](info, "piece length")
-		if !ok {
-			fmt.Println("Invalid file content, info['piece length'] field was not found")
-			os.Exit(1)
-		}
-
-		pieces, ok := findElementInDictionary[string](info, "pieces")
-		if !ok {
-			fmt.Println("Invalid file content, info['pieces'] field was not found")
+			fmt.Println(err)
 			os.Exit(1)
 		}
 
 		var encodedPieces []string
 
+		pieces, ok := findElementInDictionary[string](btFile.info, "pieces")
+		if !ok {
+			fmt.Println("Pieces field is not found")
+			os.Exit(1)
+		}
+
 		for i := 0; i < len(pieces); i += 20 {
 			encodedPieces = append(encodedPieces, hex.EncodeToString([]byte(pieces[i:i+20])))
 		}
 
-		encodedInfo, err := encode(info)
+		encodedInfo, err := encode(btFile.info)
 		if err != nil {
-			fmt.Println("Error while trying to encode info content")
+			fmt.Printf("Error while trying to encode info content: %s", err.Error())
 			os.Exit(1)
 		}
 
-		hash, err := createSha1HashFromString(encodedInfo)
+		hash, err := createSha1HashFromString(encodedInfo, true)
 		if err != nil {
 			fmt.Println("Error while trying to create hash from info content")
 			os.Exit(1)
 		}
 
-		fmt.Println("Tracker URL:", announce)
-		fmt.Println("Length:", length)
+		infoLength, ok := findElementInDictionary[int](btFile.info, "length")
+		if !ok {
+			fmt.Println("Length field in info is not found")
+			os.Exit(1)
+		}
+
+		pieceLength, ok := findElementInDictionary[int](btFile.info, "piece length")
+		if !ok {
+			fmt.Println("Piece length filed in info is not found")
+			os.Exit(1)
+		}
+
+		fmt.Println("Tracker URL:", btFile.announce)
+		fmt.Println("Length:", infoLength)
 		fmt.Println("Info Hash:", hash)
 		fmt.Println("Piece Length:", pieceLength)
 		fmt.Println("Piece Hashes:")
