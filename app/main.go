@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -22,6 +23,73 @@ func main() {
 	command := os.Args[1]
 
 	switch command {
+	case "handshake":
+		if len(os.Args) < 3 {
+			fmt.Println("Invalid number of arguments")
+			os.Exit(1)
+		}
+		fileName := os.Args[2]
+		peerAddress := os.Args[3]
+
+		fmt.Println(peerAddress)
+
+		if fileName == "" {
+			fmt.Println("Empty file name")
+			os.Exit(1)
+		}
+
+		if peerAddress == "" {
+			fmt.Println("Empty peer address")
+			os.Exit(1)
+		}
+
+		btFile := &bitTorrentFile{}
+		err := btFile.parse(fileName)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		conn, err := net.Dial("tcp", peerAddress)
+		if err != nil {
+			fmt.Println("Error while trying to establish TCP connection to", peerAddress)
+			os.Exit(1)
+		}
+
+		defer conn.Close()
+
+		encodedInfo, err := encode(btFile.info)
+		if err != nil {
+			fmt.Printf("Error while trying to encode info content: %s", err.Error())
+			os.Exit(1)
+		}
+
+		infoHash, err := createSha1HashFromString(encodedInfo, false)
+		if err != nil {
+			fmt.Println("Error while trying to create hash from info content")
+			os.Exit(1)
+		}
+
+		message := []byte{19}
+		reserved := make([]byte, 8)
+
+		message = append(message, []byte("BitTorrent protocol")...)
+		message = append(message, reserved...)
+		message = append(message, []byte(infoHash)...)
+		message = append(message, []byte(generateId())...)
+
+		_, err = conn.Write(message)
+		if err != nil {
+			fmt.Println("Error while trying to send message to TCP connection:", err.Error())
+			os.Exit(1)
+		}
+
+		res, err := io.ReadAll(conn)
+		if err != nil {
+			fmt.Println("Error while trying to read message from TCP connection:", err.Error())
+		}
+
+		fmt.Println("Peer ID:", hex.EncodeToString(res[48:]))
 	case "peers":
 		fileName := os.Args[2]
 
@@ -48,8 +116,6 @@ func main() {
 			fmt.Println("Error while trying to create hash from info content")
 			os.Exit(1)
 		}
-
-		fmt.Println(infoHash)
 
 		infoLength, ok := findElementInDictionary[int](btFile.info, "length")
 		if !ok {
