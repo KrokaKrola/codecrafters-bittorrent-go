@@ -204,17 +204,15 @@ func handshakeWithPeer(btFile *bitTorrentFile, address string) (*peer, error) {
 	}, nil
 }
 
-const infoBlockSize = 16384 // 16 kiB (16 * 1024 bytes)
-
-func getPiece(btFile *bitTorrentFile, peer *peer, pieceIndex int) ([]byte, error) {
+func unchokePeer(peer *peer) error {
 	bitfieldMsgSizeBuff := make([]byte, 4)
 	if _, err := io.ReadFull(peer.conn, bitfieldMsgSizeBuff); err != nil {
-		return nil, fmt.Errorf("error reading bitfield msg size from peer")
+		return fmt.Errorf("error reading bitfield msg size from peer")
 	}
 
 	bitfieldMsg := make([]byte, binary.BigEndian.Uint32(bitfieldMsgSizeBuff))
 	if _, err := io.ReadFull(peer.conn, bitfieldMsg); err != nil {
-		fmt.Println("error reading bitfield msg from peer")
+		return fmt.Errorf("error reading bitfield msg from peer")
 	}
 
 	intrestedMsg := []byte{}
@@ -222,19 +220,25 @@ func getPiece(btFile *bitTorrentFile, peer *peer, pieceIndex int) ([]byte, error
 	intrestedMsg = append(intrestedMsg, []byte{2}...)
 
 	if _, err := peer.conn.Write(intrestedMsg); err != nil {
-		return nil, fmt.Errorf("error writing intrested msg to peer")
+		return fmt.Errorf("error writing intrested msg to peer")
 	}
 
 	unchokeMsgSizeBuff := make([]byte, 4)
 	if _, err := io.ReadFull(peer.conn, unchokeMsgSizeBuff); err != nil {
-		return nil, fmt.Errorf("error reading unchoke msg size from peer")
+		return fmt.Errorf("error reading unchoke msg size from peer")
 	}
 
 	unchokeMsg := make([]byte, binary.BigEndian.Uint32(unchokeMsgSizeBuff))
 	if _, err := io.ReadFull(peer.conn, unchokeMsg); err != nil {
-		return nil, fmt.Errorf("error reading unchoke msg from peer")
+		return fmt.Errorf("error reading unchoke msg from peer")
 	}
 
+	return nil
+}
+
+const infoBlockSize = 16384 // 16 kiB (16 * 1024 bytes)
+
+func getPiece(btFile *bitTorrentFile, peer *peer, pieceIndex int) ([]byte, error) {
 	blocks := [][]byte{}
 
 	// last piece may be smaller than pieceLength if file size is not a multiple of pieceLength

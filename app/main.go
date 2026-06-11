@@ -18,6 +18,92 @@ func main() {
 	command := os.Args[1]
 
 	switch command {
+	case "download":
+		// ./your_program.sh download -o /tmp/test.txt sample.torrent
+		if len(os.Args) < 5 {
+			fmt.Println("Invalid number of arguments")
+			os.Exit(1)
+		}
+
+		fmt.Println(os.Args)
+
+		torrentFileName := os.Args[4]
+
+		if torrentFileName == "" {
+			fmt.Println("Empty file name")
+			os.Exit(1)
+		}
+
+		filePath := os.Args[3]
+
+		if filePath == "" {
+			fmt.Println("File path is empty")
+			os.Exit(1)
+		}
+
+		file, err := os.OpenFile(filePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+		if err != nil {
+			fmt.Println("Error reading file", filePath)
+			os.Exit(1)
+		}
+
+		defer file.Close()
+
+		btFile, err := parseBitTorrentFile(torrentFileName)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		if err = enrichWithPeers(btFile); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		if len(btFile.peers) == 0 {
+			fmt.Println("no peers for torrent file", torrentFileName)
+			os.Exit(1)
+		}
+
+		peer, err := handshakeWithPeer(btFile, btFile.peers[0])
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		defer peer.conn.Close()
+
+		if err := unchokePeer(peer); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		for pieceIdx, piecePart := range btFile.info.piecesParts {
+			fmt.Println("requesting piece", pieceIdx)
+			piece, err := getPiece(btFile, peer, pieceIdx)
+			if err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+
+			fmt.Println("got piece", pieceIdx)
+
+			pieceHash, err := createSha1Hash(piece, true)
+			if err != nil {
+				fmt.Println("error creating hash for received blocks")
+				os.Exit(1)
+			}
+
+			if pieceHash != hex.EncodeToString(piecePart) {
+				fmt.Println("piece hash is invalid")
+				os.Exit(1)
+			}
+
+			if _, err := file.Write(piece); err != nil {
+				fmt.Printf("error saving piece n=%d into the file %s", pieceIdx, os.Args[3])
+				os.Exit(1)
+			}
+		}
 	case "download_piece":
 		// ./your_program.sh download_piece -o /tmp/test-piece sample.torrent <piece_index>
 		if len(os.Args) < 6 {
@@ -67,6 +153,11 @@ func main() {
 		}
 
 		defer peer.conn.Close()
+
+		if err := unchokePeer(peer); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
 
 		piece, err := getPiece(btFile, peer, pieceIndex)
 		if err != nil {
