@@ -1,4 +1,4 @@
-package main
+package torrent
 
 import (
 	"encoding/binary"
@@ -10,36 +10,38 @@ import (
 	"os"
 	"slices"
 	"strconv"
+
+	"github.com/codecrafters-io/bittorrent-starter-go/app/utils/stringutil"
 )
 
-type bitTorrentFileInfo struct {
-	length      int
-	pieceLength int
+type fileInfo struct {
+	Length      int
+	PieceLength int
 	pieces      string
-	piecesParts [][]byte
+	PiecesParts [][]byte
 }
 
-type bitTorrentFile struct {
-	announce    string
-	shaInfoHash string
-	infoRaw     dictionary
-	info        *bitTorrentFileInfo
-	peers       []string
+type TorrentFile struct {
+	Announce    string
+	ShaInfoHash string
+	infoRaw     Dictionary
+	Info        *fileInfo
+	Peers       []*Peer
 }
 
-func parseBitTorrentFile(fileName string) (*bitTorrentFile, error) {
+func NewTorrentFile(fileName string) (*TorrentFile, error) {
 	data, err := os.ReadFile(fileName)
 	if err != nil {
 		return nil, fmt.Errorf("Error while trying to read file: %s", err.Error())
 	}
 
-	dec := decoder{
-		data: data,
+	dec := Decoder{
+		Data: data,
 	}
 
-	var dict dictionary
+	var dict Dictionary
 
-	if res, ok := dec.decode().(dictionary); ok {
+	if res, ok := dec.Decode().(Dictionary); ok {
 		dict = res
 	} else {
 		return nil, fmt.Errorf("Invalid file content")
@@ -50,7 +52,7 @@ func parseBitTorrentFile(fileName string) (*bitTorrentFile, error) {
 		return nil, fmt.Errorf("Invalid file content, announce field was not found")
 	}
 
-	info, ok := findElementInDictionary[dictionary](dict, "info")
+	info, ok := findElementInDictionary[Dictionary](dict, "info")
 	if !ok {
 		return nil, fmt.Errorf("Invalid file content, info field was not found")
 	}
@@ -61,7 +63,7 @@ func parseBitTorrentFile(fileName string) (*bitTorrentFile, error) {
 		os.Exit(1)
 	}
 
-	hash, err := createSha1HashFromString(encodedInfo, false)
+	hash, err := stringutil.CreateSha1HashFromString(encodedInfo, false)
 	if err != nil {
 		fmt.Println("Error while trying to create hash from info content")
 		os.Exit(1)
@@ -91,33 +93,32 @@ func parseBitTorrentFile(fileName string) (*bitTorrentFile, error) {
 		piecesParts = append(piecesParts, []byte(pieces[i:i+20]))
 	}
 
-	return &bitTorrentFile{
-		announce:    announce,
+	return &TorrentFile{
+		Announce:    announce,
 		infoRaw:     info,
-		shaInfoHash: hash,
-		info: &bitTorrentFileInfo{
-			length:      infoLength,
-			pieceLength: pieceLength,
+		ShaInfoHash: hash,
+		Info: &fileInfo{
+			Length:      infoLength,
+			PieceLength: pieceLength,
 			pieces:      pieces,
-			piecesParts: piecesParts,
+			PiecesParts: piecesParts,
 		},
 	}, nil
 }
 
-func enrichWithPeers(btFile *bitTorrentFile) error {
-
-	requestUrl, err := url.Parse(btFile.announce)
+func (btFile *TorrentFile) EnrichWithPeers() error {
+	requestUrl, err := url.Parse(btFile.Announce)
 	if err != nil {
 		return fmt.Errorf("Error while parsing announce URL: %s\n", err.Error())
 	}
 
 	requestQuery := requestUrl.Query()
-	requestQuery.Set("info_hash", btFile.shaInfoHash)
-	requestQuery.Set("peer_id", generateId())
+	requestQuery.Set("info_hash", btFile.ShaInfoHash)
+	requestQuery.Set("peer_id", stringutil.GenerateId())
 	requestQuery.Set("port", "6881")
 	requestQuery.Set("uploaded", "0")
 	requestQuery.Set("downloaded", "0")
-	requestQuery.Set("left", strconv.Itoa(btFile.info.length))
+	requestQuery.Set("left", strconv.Itoa(btFile.Info.Length))
 	requestQuery.Set("compact", "1")
 
 	requestUrl.RawQuery = requestQuery.Encode()
@@ -135,10 +136,10 @@ func enrichWithPeers(btFile *bitTorrentFile) error {
 	body, err := io.ReadAll(response.Body)
 	defer response.Body.Close()
 
-	bodyDecoder := &decoder{data: body}
-	res := bodyDecoder.decode()
+	bodyDecoder := &Decoder{Data: body}
+	res := bodyDecoder.Decode()
 
-	dict, ok := res.(dictionary)
+	dict, ok := res.(Dictionary)
 	if !ok {
 		return fmt.Errorf("Invalid response from announce URL")
 	}
@@ -149,29 +150,26 @@ func enrichWithPeers(btFile *bitTorrentFile) error {
 	}
 
 	peersAsBytesArr := []byte(peers)
-	var result []string
+	var result []*Peer
 
 	for i := 0; i < len(peersAsBytesArr); i += 6 {
-		ip1 := peersAsBytesArr[i]
-		ip2 := peersAsBytesArr[i+1]
-		ip3 := peersAsBytesArr[i+2]
-		ip4 := peersAsBytesArr[i+3]
+		ipPartOne := peersAsBytesArr[i]
+		ipPartTwo := peersAsBytesArr[i+1]
+		ipPartThree := peersAsBytesArr[i+2]
+		ipPartFour := peersAsBytesArr[i+3]
 		port := binary.BigEndian.Uint16(peersAsBytesArr[i+4 : i+6])
 
-		result = append(result, fmt.Sprintf("%d.%d.%d.%d:%d", ip1, ip2, ip3, ip4, port))
+		result = append(result, &Peer{
+			Addr: fmt.Sprintf("%d.%d.%d.%d:%d", ipPartOne, ipPartTwo, ipPartThree, ipPartFour, port),
+		})
 	}
 
-	btFile.peers = result
+	btFile.Peers = result
 
 	return nil
 }
 
-type peer struct {
-	id   []byte
-	conn net.Conn
-}
-
-func handshakeWithPeer(btFile *bitTorrentFile, address string) (*peer, error) {
+func (btFile *TorrentFile) HandshakeWithPeer(address string) (*Peer, error) {
 	fmt.Println("handshake with", address)
 	conn, err := net.Dial("tcp", address)
 	if err != nil {
@@ -183,11 +181,10 @@ func handshakeWithPeer(btFile *bitTorrentFile, address string) (*peer, error) {
 
 	message = append(message, []byte("BitTorrent protocol")...)
 	message = append(message, reserved...)
-	message = append(message, []byte(btFile.shaInfoHash)...)
-	message = append(message, []byte(generateId())...)
+	message = append(message, []byte(btFile.ShaInfoHash)...)
+	message = append(message, []byte(stringutil.GenerateId())...)
 
-	_, err = conn.Write(message)
-	if err != nil {
+	if _, err = conn.Write(message); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("Error while trying to send message to TCP connection: %s", err.Error())
 	}
@@ -198,53 +195,18 @@ func handshakeWithPeer(btFile *bitTorrentFile, address string) (*peer, error) {
 		return nil, fmt.Errorf("Error while trying to read message from TCP connection: %s", err.Error())
 	}
 
-	return &peer{
-		id:   res[48:],
-		conn: conn,
-	}, nil
-}
-
-func unchokePeer(peer *peer) error {
-	bitfieldMsgSizeBuff := make([]byte, 4)
-	if _, err := io.ReadFull(peer.conn, bitfieldMsgSizeBuff); err != nil {
-		return fmt.Errorf("error reading bitfield msg size from peer")
-	}
-
-	bitfieldMsg := make([]byte, binary.BigEndian.Uint32(bitfieldMsgSizeBuff))
-	if _, err := io.ReadFull(peer.conn, bitfieldMsg); err != nil {
-		return fmt.Errorf("error reading bitfield msg from peer")
-	}
-
-	intrestedMsg := []byte{}
-	intrestedMsg = append(intrestedMsg, binary.BigEndian.AppendUint32(nil, 1)...)
-	intrestedMsg = append(intrestedMsg, []byte{2}...)
-
-	if _, err := peer.conn.Write(intrestedMsg); err != nil {
-		return fmt.Errorf("error writing intrested msg to peer")
-	}
-
-	unchokeMsgSizeBuff := make([]byte, 4)
-	if _, err := io.ReadFull(peer.conn, unchokeMsgSizeBuff); err != nil {
-		return fmt.Errorf("error reading unchoke msg size from peer")
-	}
-
-	unchokeMsg := make([]byte, binary.BigEndian.Uint32(unchokeMsgSizeBuff))
-	if _, err := io.ReadFull(peer.conn, unchokeMsg); err != nil {
-		return fmt.Errorf("error reading unchoke msg from peer")
-	}
-
-	return nil
+	return &Peer{Addr: address, Conn: conn, Id: res[48:]}, nil
 }
 
 const infoBlockSize = 16384 // 16 kiB (16 * 1024 bytes)
 
-func getPiece(btFile *bitTorrentFile, peer *peer, pieceIndex int) ([]byte, error) {
+func (btFile *TorrentFile) GetPiece(peer *Peer, pieceIndex int) ([]byte, error) {
 	blocks := [][]byte{}
 
 	// last piece may be smaller than pieceLength if file size is not a multiple of pieceLength
-	actualPieceLength := btFile.info.pieceLength
-	if pieceIndex == len(btFile.info.piecesParts)-1 {
-		actualPieceLength = btFile.info.length - (pieceIndex * btFile.info.pieceLength)
+	actualPieceLength := btFile.Info.PieceLength
+	if pieceIndex == len(btFile.Info.PiecesParts)-1 {
+		actualPieceLength = btFile.Info.Length - (pieceIndex * btFile.Info.PieceLength)
 	}
 
 	for begin := uint32(0); begin < uint32(actualPieceLength); begin += infoBlockSize {
@@ -258,19 +220,19 @@ func getPiece(btFile *bitTorrentFile, peer *peer, pieceIndex int) ([]byte, error
 		requestMsg = append(requestMsg, binary.BigEndian.AppendUint32(nil, begin)...)
 		requestMsg = append(requestMsg, binary.BigEndian.AppendUint32(nil, length)...)
 
-		if _, err := peer.conn.Write(requestMsg); err != nil {
+		if _, err := peer.Conn.Write(requestMsg); err != nil {
 			return nil, fmt.Errorf("error writing request msg to peer")
 		}
 
 		pieceMsgBuffSize := make([]byte, 4)
-		if _, err := io.ReadFull(peer.conn, pieceMsgBuffSize); err != nil {
+		if _, err := io.ReadFull(peer.Conn, pieceMsgBuffSize); err != nil {
 			return nil, fmt.Errorf("error reading msg size for block request")
 		}
 
 		msgLen := binary.BigEndian.Uint32(pieceMsgBuffSize)
 
 		pieceMsg := make([]byte, msgLen)
-		if _, err := io.ReadFull(peer.conn, pieceMsg); err != nil {
+		if _, err := io.ReadFull(peer.Conn, pieceMsg); err != nil {
 			return nil, fmt.Errorf("error reading block msg from peer")
 		}
 

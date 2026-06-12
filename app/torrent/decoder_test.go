@@ -1,4 +1,4 @@
-package main
+package torrent
 
 import (
 	"bufio"
@@ -12,11 +12,11 @@ import (
 func TestBencodedString(t *testing.T) {
 	t.Run("base example", func(t *testing.T) {
 		want := "hello"
-		dec := &decoder{
-			data: fmt.Appendf(nil, "%d:%s", len(want), want),
+		dec := &Decoder{
+			Data: fmt.Appendf(nil, "%d:%s", len(want), want),
 		}
 
-		got := dec.decode()
+		got := dec.Decode()
 		if got != want {
 			t.Fatalf("decode(%d:%s) expected %s, got %s", len(want), want, want, got)
 		}
@@ -24,11 +24,11 @@ func TestBencodedString(t *testing.T) {
 
 	t.Run("complex example", func(t *testing.T) {
 		want := "codecrafters-bittorent-go"
-		dec := &decoder{
-			data: fmt.Appendf(nil, "%d:%s", len(want), want),
+		dec := &Decoder{
+			Data: fmt.Appendf(nil, "%d:%s", len(want), want),
 		}
 
-		got := dec.decode()
+		got := dec.Decode()
 		if got != want {
 			t.Fatalf("decode(%d:%s) expected %s, got %s", len(want), want, want, got)
 		}
@@ -36,12 +36,12 @@ func TestBencodedString(t *testing.T) {
 
 	t.Run("invalid len value", func(t *testing.T) {
 		want := "codecrafters-bittorent-go"
-		dec := &decoder{
-			data: fmt.Appendf(nil, "%d:%s", 100, want),
+		dec := &Decoder{
+			Data: fmt.Appendf(nil, "%d:%s", 100, want),
 		}
 
-		dec.decode()
-		if dec.err == nil {
+		dec.Decode()
+		if dec.Err == nil {
 			t.Fatal("expected error from decode, got nil")
 		}
 	})
@@ -50,11 +50,11 @@ func TestBencodedString(t *testing.T) {
 func TestBencodedInteger(t *testing.T) {
 	t.Run("base example", func(t *testing.T) {
 		want := 32
-		dec := &decoder{
-			data: fmt.Appendf(nil, "i%de", want),
+		dec := &Decoder{
+			Data: fmt.Appendf(nil, "i%de", want),
 		}
 
-		got := dec.decode()
+		got := dec.Decode()
 		if got != want {
 			t.Fatalf("decode(i%de) expected %d, got %s", want, want, got)
 		}
@@ -62,11 +62,11 @@ func TestBencodedInteger(t *testing.T) {
 
 	t.Run("negative number", func(t *testing.T) {
 		want := -32
-		dec := &decoder{
-			data: fmt.Appendf(nil, "i%de", want),
+		dec := &Decoder{
+			Data: fmt.Appendf(nil, "i%de", want),
 		}
 
-		got := dec.decode()
+		got := dec.Decode()
 		if got != want {
 			t.Fatalf("decode(i%de) expected %d, got %s", want, want, got)
 		}
@@ -74,11 +74,11 @@ func TestBencodedInteger(t *testing.T) {
 
 	t.Run("negative number", func(t *testing.T) {
 		want := -32
-		dec := &decoder{
-			data: fmt.Appendf(nil, "i%de", want),
+		dec := &Decoder{
+			Data: fmt.Appendf(nil, "i%de", want),
 		}
 
-		got := dec.decode()
+		got := dec.Decode()
 		if got != want {
 			t.Fatalf("decode(i%de) expected %d, got %s", want, want, got)
 		}
@@ -86,11 +86,11 @@ func TestBencodedInteger(t *testing.T) {
 
 	t.Run("large number", func(t *testing.T) {
 		want := math.MaxInt64
-		dec := &decoder{
-			data: fmt.Appendf(nil, "i%de", want),
+		dec := &Decoder{
+			Data: fmt.Appendf(nil, "i%de", want),
 		}
 
-		got := dec.decode()
+		got := dec.Decode()
 		if got != want {
 			t.Fatalf("decode(i%de) expected %d, got %s", want, want, got)
 		}
@@ -98,12 +98,12 @@ func TestBencodedInteger(t *testing.T) {
 
 	t.Run("invalid input", func(t *testing.T) {
 		want := 10
-		dec := &decoder{
-			data: fmt.Appendf(nil, "i%d", want),
+		dec := &Decoder{
+			Data: fmt.Appendf(nil, "i%d", want),
 		}
 
-		dec.decode()
-		if dec.err == nil {
+		dec.Decode()
+		if dec.Err == nil {
 			t.Fatal("expected error from decode, got nil")
 		}
 	})
@@ -111,12 +111,12 @@ func TestBencodedInteger(t *testing.T) {
 
 func TestBencodedList(t *testing.T) {
 	t.Run("base example", func(t *testing.T) {
-		dec := &decoder{
-			data: fmt.Appendf(nil, "l5:helloi32ee"),
+		dec := &Decoder{
+			Data: fmt.Appendf(nil, "l5:helloi32ee"),
 		}
 
 		want := []any{"hello", 32}
-		got := dec.decode()
+		got := dec.Decode()
 
 		gotList, ok := got.([]any)
 		if !ok {
@@ -132,12 +132,12 @@ func TestBencodedList(t *testing.T) {
 	})
 
 	t.Run("inner list", func(t *testing.T) {
-		dec := &decoder{
-			data: fmt.Appendf(nil, "ll5:helloee"),
+		dec := &Decoder{
+			Data: fmt.Appendf(nil, "ll5:helloee"),
 		}
 
 		want := []any{[]any{"hello"}}
-		got := dec.decode()
+		got := dec.Decode()
 
 		gotList, ok := got.([]any)
 		if !ok {
@@ -153,12 +153,12 @@ func TestBencodedList(t *testing.T) {
 	})
 
 	t.Run("invalid input", func(t *testing.T) {
-		dec := &decoder{
-			data: fmt.Appendf(nil, "l5:helloi32e"),
+		dec := &Decoder{
+			Data: fmt.Appendf(nil, "l5:helloi32e"),
 		}
 
-		dec.decode()
-		if dec.err == nil {
+		dec.Decode()
+		if dec.Err == nil {
 			t.Fatal("expected error from decode, got nil")
 		}
 	})
@@ -166,8 +166,8 @@ func TestBencodedList(t *testing.T) {
 
 func TestBencodedDict(t *testing.T) {
 	t.Run("base example", func(t *testing.T) {
-		dec := &decoder{
-			data: fmt.Appendf(nil, "d3:foo3:bar5:helloi52ee"),
+		dec := &Decoder{
+			Data: fmt.Appendf(nil, "d3:foo3:bar5:helloi52ee"),
 		}
 
 		want := map[string]any{
@@ -175,14 +175,14 @@ func TestBencodedDict(t *testing.T) {
 			"hello": 52,
 		}
 
-		decodeRes := dec.decode()
+		decodeRes := dec.Decode()
 
-		got, ok := decodeRes.(dictionary)
+		got, ok := decodeRes.(Dictionary)
 		if !ok {
 			t.Fatal("expected map from decode, got nil")
 		}
 
-		gotMap := got.toMap()
+		gotMap := got.ToMap()
 
 		jsonWant, _ := json.Marshal(want)
 		jsonGot, _ := json.Marshal(gotMap)
@@ -193,8 +193,8 @@ func TestBencodedDict(t *testing.T) {
 	})
 
 	t.Run("inner dictionary and list", func(t *testing.T) {
-		dec := &decoder{
-			data: fmt.Appendf(nil, "d10:inner_dictd4:key16:value14:key2i42e8:list_keyl5:item15:item2i3eeee"),
+		dec := &Decoder{
+			Data: fmt.Appendf(nil, "d10:inner_dictd4:key16:value14:key2i42e8:list_keyl5:item15:item2i3eeee"),
 		}
 
 		want := map[string]any{
@@ -205,14 +205,14 @@ func TestBencodedDict(t *testing.T) {
 			},
 		}
 
-		decodeRes := dec.decode()
+		decodeRes := dec.Decode()
 
-		got, ok := decodeRes.(dictionary)
+		got, ok := decodeRes.(Dictionary)
 		if !ok {
 			t.Fatal("expected map from decode, got nil")
 		}
 
-		gotMap := got.toMap()
+		gotMap := got.ToMap()
 
 		jsonWant, _ := json.Marshal(want)
 		jsonGot, _ := json.Marshal(gotMap)
@@ -223,42 +223,12 @@ func TestBencodedDict(t *testing.T) {
 	})
 }
 
-func TestEncode(t *testing.T) {
-	t.Run("dictionary encode", func(t *testing.T) {
-		want := "d10:inner_dictd4:key16:value14:key2i42e8:list_keyl5:item15:item2i3eeee"
-		input := dictionary{
-			dictionaryValue{
-				key: "inner_dict",
-				value: dictionary{
-					dictionaryValue{
-						key:   "key1",
-						value: "value1",
-					},
-					dictionaryValue{
-						key:   "key2",
-						value: 42,
-					},
-					dictionaryValue{
-						key:   "list_key",
-						value: []any{"item1", "item2", 3},
-					},
-				},
-			},
-		}
-
-		got, _ := encode(input)
-		if got != want {
-			t.Fatalf("expected got=%s, to eqal want=%s", got, want)
-		}
-	})
-}
-
 var benchInput = []byte("d10:inner_dictd4:key16:value14:key2i42e8:list_keyl5:item15:item2i3eeee")
 
 func BenchmarkDecoder(b *testing.B) {
 	for b.Loop() {
-		dec := &decoder{data: benchInput}
-		dec.decode()
+		dec := &Decoder{Data: benchInput}
+		dec.Decode()
 	}
 }
 

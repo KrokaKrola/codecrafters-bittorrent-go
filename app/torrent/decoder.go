@@ -1,4 +1,4 @@
-package main
+package torrent
 
 import (
 	"fmt"
@@ -10,14 +10,14 @@ type dictionaryValue struct {
 	value any
 }
 
-type dictionary []dictionaryValue
+type Dictionary []dictionaryValue
 
-func (d dictionary) toMap() map[string]any {
+func (d Dictionary) ToMap() map[string]any {
 	result := make(map[string]any)
 
 	for _, el := range d {
-		if innerDict, ok := el.value.(dictionary); ok {
-			el.value = innerDict.toMap()
+		if innerDict, ok := el.value.(Dictionary); ok {
+			el.value = innerDict.ToMap()
 		}
 
 		result[el.key] = el.value
@@ -26,7 +26,7 @@ func (d dictionary) toMap() map[string]any {
 	return result
 }
 
-func findElementInDictionary[T any](d dictionary, key string) (T, bool) {
+func findElementInDictionary[T any](d Dictionary, key string) (T, bool) {
 	var res T
 
 	for _, el := range d {
@@ -51,19 +51,19 @@ const (
 	columnIdentifier            = byte(':')
 )
 
-type decoder struct {
-	data []byte
+type Decoder struct {
+	Data []byte
 	pos  int
-	err  error
+	Err  error
 }
 
-func (d *decoder) decode() any {
-	if d.err != nil {
+func (d *Decoder) Decode() any {
+	if d.Err != nil {
 		return nil
 	}
 
-	if d.pos >= len(d.data) {
-		d.err = fmt.Errorf("invalid input format: %s", d.data)
+	if d.pos >= len(d.Data) {
+		d.Err = fmt.Errorf("invalid input format: %s", d.Data)
 		return nil
 	}
 
@@ -72,15 +72,15 @@ func (d *decoder) decode() any {
 	switch inputType {
 	case dictionaryBencodeIdentifier:
 		d.readByte()
-		result := dictionary{}
+		result := Dictionary{}
 
 		for {
-			if d.err != nil {
+			if d.Err != nil {
 				return nil
 			}
 
-			if d.pos >= len(d.data) {
-				d.err = fmt.Errorf("invalid dictionary format: %s", d.data)
+			if d.pos >= len(d.Data) {
+				d.Err = fmt.Errorf("invalid dictionary format: %s", d.Data)
 				return nil
 			}
 
@@ -89,13 +89,13 @@ func (d *decoder) decode() any {
 				break
 			}
 
-			key, ok := d.decode().(string)
+			key, ok := d.Decode().(string)
 			if !ok {
-				d.err = fmt.Errorf("invalid dictionary format, each key must be string type: %s", d.data)
+				d.Err = fmt.Errorf("invalid dictionary format, each key must be string type: %s", d.Data)
 				return nil
 			}
 
-			value := d.decode()
+			value := d.Decode()
 			result = append(result, struct {
 				key   string
 				value any
@@ -111,7 +111,7 @@ func (d *decoder) decode() any {
 		startPos := d.pos
 		var endOfNumber int
 
-		for i := d.pos; i < len(d.data); i++ {
+		for i := d.pos; i < len(d.Data); i++ {
 			if d.readByte() == endOfIdentifier {
 				endOfNumber = i
 				break
@@ -119,13 +119,13 @@ func (d *decoder) decode() any {
 		}
 
 		if endOfNumber == 0 {
-			d.err = fmt.Errorf("invalid number format: %s", d.data)
+			d.Err = fmt.Errorf("invalid number format: %s", d.Data)
 			return nil
 		}
 
-		number, err := strconv.Atoi(string(d.data[startPos:endOfNumber]))
+		number, err := strconv.Atoi(string(d.Data[startPos:endOfNumber]))
 		if err != nil {
-			d.err = err
+			d.Err = err
 			return nil
 		}
 
@@ -135,12 +135,12 @@ func (d *decoder) decode() any {
 		result := []any{}
 
 		for {
-			if d.err != nil {
+			if d.Err != nil {
 				return nil
 			}
 
-			if d.pos >= len(d.data) {
-				d.err = fmt.Errorf("invalid list format: %s", d.data)
+			if d.pos >= len(d.Data) {
+				d.Err = fmt.Errorf("invalid list format: %s", d.Data)
 				return nil
 			}
 
@@ -149,7 +149,7 @@ func (d *decoder) decode() any {
 				break
 			}
 
-			val := d.decode()
+			val := d.Decode()
 			result = append(result, val)
 		}
 
@@ -158,38 +158,38 @@ func (d *decoder) decode() any {
 		initialPos := d.pos
 		var firstColonIndex int
 
-		for i := d.pos; i < len(d.data); i++ {
+		for i := d.pos; i < len(d.Data); i++ {
 			if d.readByte() == columnIdentifier {
 				firstColonIndex = i
 				break
 			}
 		}
 
-		lengthStr := d.data[initialPos:firstColonIndex]
+		lengthStr := d.Data[initialPos:firstColonIndex]
 
 		length, err := strconv.Atoi(string(lengthStr))
 		if err != nil {
-			d.err = err
+			d.Err = err
 			return nil
 		}
 
-		if d.pos+length > len(d.data) {
-			d.err = fmt.Errorf("invalid string length: %d", length)
+		if d.pos+length > len(d.Data) {
+			d.Err = fmt.Errorf("invalid string length: %d", length)
 			return nil
 		}
 
 		d.pos += length
-		return string(d.data[firstColonIndex+1 : d.pos])
+		return string(d.Data[firstColonIndex+1 : d.pos])
 	}
 }
 
-func (d *decoder) readByte() byte {
-	b := d.data[d.pos]
+func (d *Decoder) readByte() byte {
+	b := d.Data[d.pos]
 	d.pos++
 	return b
 }
 
-func (d *decoder) peekByte() byte {
-	b := d.data[d.pos]
+func (d *Decoder) peekByte() byte {
+	b := d.Data[d.pos]
 	return b
 }

@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+
+	"github.com/codecrafters-io/bittorrent-starter-go/app/torrent"
+	"github.com/codecrafters-io/bittorrent-starter-go/app/utils/stringutil"
 	// bencode "github.com/jackpal/bencode-go" // Available if you need it!
 )
 
@@ -47,27 +50,26 @@ func main() {
 
 		defer file.Close()
 
-		btFile, err := parseBitTorrentFile(torrentFileName)
+		btFile, err := torrent.NewTorrentFile(torrentFileName)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
 
-		if err = enrichWithPeers(btFile); err != nil {
+		if err = btFile.EnrichWithPeers(); err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
 
-		if len(btFile.peers) == 0 {
+		if len(btFile.Peers) == 0 {
 			fmt.Println("no peers for torrent file", torrentFileName)
 			os.Exit(1)
 		}
 
-		if err := downloadFile(btFile, filePath, file); err != nil {
+		if err := btFile.DownloadFile(filePath, file); err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
-
 	case "download_piece":
 		// ./your_program.sh download_piece -o /tmp/test-piece sample.torrent <piece_index>
 		if len(os.Args) < 6 {
@@ -94,48 +96,48 @@ func main() {
 			os.Exit(1)
 		}
 
-		btFile, err := parseBitTorrentFile(fileName)
+		btFile, err := torrent.NewTorrentFile(fileName)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
 
-		if err = enrichWithPeers(btFile); err != nil {
+		if err = btFile.EnrichWithPeers(); err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
 
-		if len(btFile.peers) == 0 {
+		if len(btFile.Peers) == 0 {
 			fmt.Println("no peers for torrent file", fileName)
 			os.Exit(1)
 		}
 
-		peer, err := handshakeWithPeer(btFile, btFile.peers[0])
+		peer, err := btFile.HandshakeWithPeer(btFile.Peers[0].Addr)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
 
-		defer peer.conn.Close()
+		defer peer.Conn.Close()
 
-		if err := unchokePeer(peer); err != nil {
+		if err := peer.UnchokePeer(); err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
 
-		piece, err := getPiece(btFile, peer, pieceIndex)
+		piece, err := btFile.GetPiece(peer, pieceIndex)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
 
-		pieceHash, err := createSha1Hash(piece, true)
+		pieceHash, err := stringutil.CreateSha1Hash(piece, true)
 		if err != nil {
 			fmt.Println("error creating hash for received blocks")
 			os.Exit(1)
 		}
 
-		if pieceHash != hex.EncodeToString(btFile.info.piecesParts[pieceIndex]) {
+		if pieceHash != hex.EncodeToString(btFile.Info.PiecesParts[pieceIndex]) {
 			fmt.Println("piece hash is invalid")
 			os.Exit(1)
 		}
@@ -162,20 +164,26 @@ func main() {
 			os.Exit(1)
 		}
 
-		btFile, err := parseBitTorrentFile(fileName)
+		btFile, err := torrent.NewTorrentFile(fileName)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
 
-		peer, err := handshakeWithPeer(btFile, peerAddress)
+		if err = btFile.EnrichWithPeers(); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		peer, err := btFile.HandshakeWithPeer(peerAddress)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
-		defer peer.conn.Close()
 
-		fmt.Println("Peer ID:", hex.EncodeToString(peer.id))
+		defer peer.Conn.Close()
+
+		fmt.Println("Peer ID:", hex.EncodeToString(peer.Id))
 	case "peers":
 		fileName := os.Args[2]
 
@@ -184,18 +192,18 @@ func main() {
 			os.Exit(1)
 		}
 
-		btFile, err := parseBitTorrentFile(fileName)
+		btFile, err := torrent.NewTorrentFile(fileName)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
 
-		if err = enrichWithPeers(btFile); err != nil {
+		if err = btFile.EnrichWithPeers(); err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
 
-		for _, el := range btFile.peers {
+		for _, el := range btFile.Peers {
 			fmt.Println(el)
 		}
 	case "info":
@@ -206,36 +214,36 @@ func main() {
 			os.Exit(1)
 		}
 
-		btFile, err := parseBitTorrentFile(fileName)
+		btFile, err := torrent.NewTorrentFile(fileName)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
 
-		fmt.Println("Tracker URL:", btFile.announce)
-		fmt.Println("Length:", btFile.info.length)
-		fmt.Println("Info Hash:", hex.EncodeToString([]byte(btFile.shaInfoHash)))
-		fmt.Println("Piece Length:", btFile.info.pieceLength)
+		fmt.Println("Tracker URL:", btFile.Announce)
+		fmt.Println("Length:", btFile.Info.Length)
+		fmt.Println("Info Hash:", hex.EncodeToString([]byte(btFile.ShaInfoHash)))
+		fmt.Println("Piece Length:", btFile.Info.PieceLength)
 		fmt.Println("Piece Hashes:")
-		for _, el := range btFile.info.piecesParts {
+		for _, el := range btFile.Info.PiecesParts {
 			fmt.Println(hex.EncodeToString(el))
 		}
 	case "decode":
 		bencodedValue := os.Args[2]
 
-		dec := decoder{
-			data: []byte(bencodedValue),
+		dec := torrent.Decoder{
+			Data: []byte(bencodedValue),
 		}
 
-		decoded := dec.decode()
+		decoded := dec.Decode()
 
-		if dec.err != nil {
-			fmt.Println(dec.err)
+		if dec.Err != nil {
+			fmt.Println(dec.Err)
 			return
 		}
 
-		if _, ok := decoded.(dictionary); ok {
-			decoded = decoded.(dictionary).toMap()
+		if _, ok := decoded.(torrent.Dictionary); ok {
+			decoded = decoded.(torrent.Dictionary).ToMap()
 		}
 
 		jsonOutput, _ := json.Marshal(decoded)

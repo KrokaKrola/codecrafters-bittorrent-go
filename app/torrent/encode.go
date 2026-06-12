@@ -1,15 +1,13 @@
-package main
+package torrent
 
 import (
-	"crypto/sha1"
-	"encoding/hex"
 	"fmt"
 	"strings"
 )
 
 func encode(input any) (string, error) {
 	switch value := input.(type) {
-	case dictionary:
+	case Dictionary:
 		var result strings.Builder
 
 		for _, value := range value {
@@ -65,24 +63,4 @@ func encode(input any) (string, error) {
 	default:
 		return "", fmt.Errorf("unknown datatype: %v", value)
 	}
-}
-
-func createSha1HashFromString(input string, withEncoding bool) (string, error) {
-	return createSha1Hash([]byte(input), withEncoding)
-}
-
-func createSha1Hash(input []byte, withEncoding bool) (string, error) {
-	hash := sha1.New()
-
-	if _, err := hash.Write(input); err != nil {
-		return "", err
-	}
-
-	hashSum := hash.Sum(nil)
-
-	if withEncoding {
-		return hex.EncodeToString(hashSum), nil
-	}
-
-	return string(hashSum), nil
 }

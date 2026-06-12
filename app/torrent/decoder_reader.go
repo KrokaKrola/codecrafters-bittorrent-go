@@ -1,4 +1,4 @@
-package main
+package torrent
 
 import (
 	"bufio"
@@ -24,7 +24,7 @@ func (d *readerDecoder) decode() any {
 
 	switch b {
 	case dictionaryBencodeIdentifier:
-		result := dictionary{}
+		result := Dictionary{}
 
 		for {
 			if d.err != nil {
