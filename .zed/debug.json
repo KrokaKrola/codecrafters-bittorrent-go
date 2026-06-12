@@ -1,17 +1,14 @@
 [
   {
     "adapter": "Delve",
-    "label": "go run ./app download_piece",
+    "label": "go run ./app magnet_handshake",
     "request": "launch",
     "mode": "debug",
     "program": "${ZED_WORKTREE_ROOT}/app",
     "cwd": "$ZED_DIRNAME",
     "args": [
-      "download_piece",
-      "-o",
-      "/Users/oleh.kotlinskiy/Projects/codecrafters-bittorrent-go/piece",
-      "/Users/oleh.kotlinskiy/Projects/codecrafters-bittorrent-go/sample.torrent",
-      "1",
+      "magnet_handshake",
+      "magnet:?xt=urn:btih:ad42ce8109f54c99613ce38f9b4d87e70f24a165&dn=magnet1.gif&tr=http%3A%2F%2Fbittorrent-test-tracker.codecrafters.io%2Fannounce",
     ],
     "buildFlags": [],
     "env": {},

@@ -1,4 +1,4 @@
-package torrent
+package bencode
 
 import "testing"
 
@@ -25,7 +25,7 @@ func TestEncode(t *testing.T) {
 			},
 		}
 
-		got, _ := encode(input)
+		got, _ := Encode(input)
 		if got != want {
 			t.Fatalf("expected got=%s, to eqal want=%s", got, want)
 		}

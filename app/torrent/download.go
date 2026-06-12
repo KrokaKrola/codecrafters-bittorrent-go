@@ -34,22 +34,22 @@ func worker(btFile *TorrentFile, id int, wg *sync.WaitGroup, in <-chan job, resu
 	fmt.Println("Starting worker id=", id)
 	defer wg.Done()
 
-	peer, err := btFile.HandshakeWithPeer(btFile.Peers[0].Addr)
+	peerConn, err := btFile.Peers[0].HandshakeWithPeer(btFile.ShaInfoHash, false)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 
-	defer peer.Conn.Close()
+	defer peerConn.Close()
 
-	if err := peer.UnchokePeer(); err != nil {
+	if err := btFile.Peers[0].UnchokePeer(peerConn); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 
 	for job := range in {
 		fmt.Println("requesting piece", job.pieceIdx)
-		piece, err := btFile.GetPiece(peer, job.pieceIdx)
+		piece, err := btFile.GetPiece(peerConn, job.pieceIdx)
 		if err != nil {
 			failures <- jobFailure{
 				retryCount: job.retryCount + 1,

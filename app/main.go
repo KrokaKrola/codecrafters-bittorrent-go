@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/codecrafters-io/bittorrent-starter-go/app/bencode"
 	"github.com/codecrafters-io/bittorrent-starter-go/app/magnet"
 	"github.com/codecrafters-io/bittorrent-starter-go/app/torrent"
 	"github.com/codecrafters-io/bittorrent-starter-go/app/utils/stringutil"
@@ -113,20 +114,20 @@ func main() {
 			os.Exit(1)
 		}
 
-		peer, err := btFile.HandshakeWithPeer(btFile.Peers[0].Addr)
+		peerConn, err := btFile.Peers[0].HandshakeWithPeer(btFile.ShaInfoHash, false)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
 
-		defer peer.Conn.Close()
+		defer peerConn.Close()
 
-		if err := peer.UnchokePeer(); err != nil {
+		if err := btFile.Peers[0].UnchokePeer(peerConn); err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
 
-		piece, err := btFile.GetPiece(peer, pieceIndex)
+		piece, err := btFile.GetPiece(peerConn, pieceIndex)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
@@ -176,15 +177,15 @@ func main() {
 			os.Exit(1)
 		}
 
-		peer, err := btFile.HandshakeWithPeer(peerAddress)
+		peerConn, err := btFile.Peers[0].HandshakeWithPeer(btFile.ShaInfoHash, false)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
 
-		defer peer.Conn.Close()
+		defer peerConn.Close()
 
-		fmt.Println("Peer ID:", hex.EncodeToString(peer.Id))
+		fmt.Println("Peer ID:", hex.EncodeToString(btFile.Peers[0].Id))
 	case "peers":
 		fileName := os.Args[2]
 
@@ -232,7 +233,7 @@ func main() {
 	case "decode":
 		bencodedValue := os.Args[2]
 
-		dec := torrent.Decoder{
+		dec := bencode.Decoder{
 			Data: []byte(bencodedValue),
 		}
 
@@ -243,8 +244,8 @@ func main() {
 			return
 		}
 
-		if _, ok := decoded.(torrent.Dictionary); ok {
-			decoded = decoded.(torrent.Dictionary).ToMap()
+		if _, ok := decoded.(bencode.Dictionary); ok {
+			decoded = decoded.(bencode.Dictionary).ToMap()
 		}
 
 		jsonOutput, _ := json.Marshal(decoded)
@@ -260,7 +261,25 @@ func main() {
 		}
 
 		fmt.Println("Tracker URL:", magnet.TrackerUrl)
-		fmt.Println("Info Hash:", magnet.InfoHash)
+		fmt.Println("Info Hash:", hex.EncodeToString(magnet.InfoHash))
+	case "magnet_handshake":
+		magnetLink := os.Args[2]
+
+		magnet, err := magnet.NewMagnet(magnetLink)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		peer, err := magnet.Peers[0].HandshakeWithPeer(string(magnet.InfoHash), true)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		defer peer.Close()
+
+		fmt.Println("Peer ID:", hex.EncodeToString(magnet.Peers[0].Id))
 	default:
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)

@@ -1,22 +1,22 @@
-package torrent
+package bencode
 
 import (
 	"fmt"
 	"strings"
 )
 
-func encode(input any) (string, error) {
+func Encode(input any) (string, error) {
 	switch value := input.(type) {
 	case Dictionary:
 		var result strings.Builder
 
 		for _, value := range value {
-			key, err := encode(value.key)
+			key, err := Encode(value.key)
 			if err != nil {
 				return "", err
 			}
 
-			value, err := encode(value.value)
+			value, err := Encode(value.value)
 			if err != nil {
 				return "", err
 			}
@@ -29,12 +29,12 @@ func encode(input any) (string, error) {
 		var result strings.Builder
 
 		for key, value := range value {
-			key, err := encode(key)
+			key, err := Encode(key)
 			if err != nil {
 				return "", err
 			}
 
-			value, err := encode(value)
+			value, err := Encode(value)
 			if err != nil {
 				return "", err
 			}
@@ -51,7 +51,7 @@ func encode(input any) (string, error) {
 		var result strings.Builder
 
 		for _, el := range value {
-			r, err := encode(el)
+			r, err := Encode(el)
 			if err != nil {
 				return "", err
 			}

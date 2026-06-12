@@ -1,4 +1,4 @@
-package torrent
+package bencode
 
 import (
 	"fmt"
@@ -26,7 +26,7 @@ func (d Dictionary) ToMap() map[string]any {
 	return result
 }
 
-func findElementInDictionary[T any](d Dictionary, key string) (T, bool) {
+func FindElementInDictionary[T any](d Dictionary, key string) (T, bool) {
 	var res T
 
 	for _, el := range d {
