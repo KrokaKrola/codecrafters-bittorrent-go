@@ -7,9 +7,9 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/codecrafters-io/bittorrent-starter-go/app/magnet"
 	"github.com/codecrafters-io/bittorrent-starter-go/app/torrent"
 	"github.com/codecrafters-io/bittorrent-starter-go/app/utils/stringutil"
-	// bencode "github.com/jackpal/bencode-go" // Available if you need it!
 )
 
 func main() {
@@ -21,6 +21,7 @@ func main() {
 	command := os.Args[1]
 
 	switch command {
+	// torrent commands
 	case "download":
 		// ./your_program.sh download -o /tmp/test.txt sample.torrent
 		if len(os.Args) < 5 {
@@ -248,6 +249,18 @@ func main() {
 
 		jsonOutput, _ := json.Marshal(decoded)
 		fmt.Println(string(jsonOutput))
+	// magnet commands
+	case "magnet_parse":
+		magnetLink := os.Args[2]
+
+		magnet, err := magnet.NewMagnet(magnetLink)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		fmt.Println("Tracker URL:", magnet.TrackerUrl)
+		fmt.Println("Info Hash:", magnet.InfoHash)
 	default:
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
