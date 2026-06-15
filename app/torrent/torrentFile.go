@@ -105,14 +105,15 @@ func NewTorrentFile(fileName string) (*TorrentFile, error) {
 	}, nil
 }
 
-func (btFile *TorrentFile) EnrichWithPeers() error {
+// LoadPeers fetches the peer list from the tracker and caches it on the
+// TorrentFile. Network access is deferred to here so that parsing a torrent
+// file (e.g. for the info command) does not require a reachable tracker.
+func (btFile *TorrentFile) LoadPeers() error {
 	peers, err := peer.GetPeers(btFile.Announce, btFile.ShaInfoHash, btFile.Info.Length)
 	if err != nil {
 		return err
 	}
-
 	btFile.Peers = peers
-
 	return nil
 }
 

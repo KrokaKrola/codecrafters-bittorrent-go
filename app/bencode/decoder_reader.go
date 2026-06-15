@@ -49,7 +49,7 @@ func (d *readerDecoder) decode() any {
 			}
 
 			value := d.decode()
-			result = append(result, dictionaryValue{key, value})
+			result = append(result, DictionaryValue{key, value})
 		}
 
 		return result

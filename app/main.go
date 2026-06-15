@@ -58,7 +58,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		if err = btFile.EnrichWithPeers(); err != nil {
+		if err := btFile.LoadPeers(); err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
@@ -104,7 +104,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		if err = btFile.EnrichWithPeers(); err != nil {
+		if err := btFile.LoadPeers(); err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
@@ -172,7 +172,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		if err = btFile.EnrichWithPeers(); err != nil {
+		if err := btFile.LoadPeers(); err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
@@ -200,7 +200,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		if err = btFile.EnrichWithPeers(); err != nil {
+		if err := btFile.LoadPeers(); err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
@@ -250,7 +250,8 @@ func main() {
 
 		jsonOutput, _ := json.Marshal(decoded)
 		fmt.Println(string(jsonOutput))
-	// magnet commands
+
+		// magnet commands
 	case "magnet_parse":
 		magnetLink := os.Args[2]
 
@@ -271,15 +272,23 @@ func main() {
 			os.Exit(1)
 		}
 
-		peer, err := magnet.Peers[0].HandshakeWithPeer(string(magnet.InfoHash), true)
+		peer := magnet.Peers[0]
+
+		peerConn, err := peer.HandshakeWithPeer(string(magnet.InfoHash), true)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
 
-		defer peer.Close()
+		defer peerConn.Close()
+
+		if err := peer.DoExtensionHandshake(peerConn); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
 
 		fmt.Println("Peer ID:", hex.EncodeToString(magnet.Peers[0].Id))
+		fmt.Println("Peer Metadata Extension ID:", peer.MetaDataId)
 	default:
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)

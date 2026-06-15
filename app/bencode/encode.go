@@ -11,12 +11,12 @@ func Encode(input any) (string, error) {
 		var result strings.Builder
 
 		for _, value := range value {
-			key, err := Encode(value.key)
+			key, err := Encode(value.Key)
 			if err != nil {
 				return "", err
 			}
 
-			value, err := Encode(value.value)
+			value, err := Encode(value.Value)
 			if err != nil {
 				return "", err
 			}

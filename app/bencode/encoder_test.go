@@ -6,20 +6,20 @@ func TestEncode(t *testing.T) {
 	t.Run("dictionary encode", func(t *testing.T) {
 		want := "d10:inner_dictd4:key16:value14:key2i42e8:list_keyl5:item15:item2i3eeee"
 		input := Dictionary{
-			dictionaryValue{
-				key: "inner_dict",
-				value: Dictionary{
-					dictionaryValue{
-						key:   "key1",
-						value: "value1",
+			DictionaryValue{
+				Key: "inner_dict",
+				Value: Dictionary{
+					DictionaryValue{
+						Key:   "key1",
+						Value: "value1",
 					},
-					dictionaryValue{
-						key:   "key2",
-						value: 42,
+					DictionaryValue{
+						Key:   "key2",
+						Value: 42,
 					},
-					dictionaryValue{
-						key:   "list_key",
-						value: []any{"item1", "item2", 3},
+					DictionaryValue{
+						Key:   "list_key",
+						Value: []any{"item1", "item2", 3},
 					},
 				},
 			},

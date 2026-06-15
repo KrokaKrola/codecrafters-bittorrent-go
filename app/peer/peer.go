@@ -14,40 +14,161 @@ import (
 )
 
 type Peer struct {
-	Id   []byte
-	Addr string
+	Id                  []byte
+	Addr                string
+	HasExtensionSupport bool
+	MetaDataId          int
+}
+
+const UtMetaDataId = 1
+const UtPextId = 2
+
+// Peer message ids
+const (
+	msgIdBitfield   = 5
+	msgIdInterested = 2
+	msgIdUnchoke    = 1
+	msgIdExtension  = 20
+)
+
+func readMessage(conn net.Conn) (byte, []byte, error) {
+	lenBuf := make([]byte, 4)
+	if _, err := io.ReadFull(conn, lenBuf); err != nil {
+		return 0, nil, fmt.Errorf("error reading message length from peer: %w", err)
+	}
+
+	length := binary.BigEndian.Uint32(lenBuf)
+	if length == 0 {
+		return 255, nil, nil
+	}
+
+	body := make([]byte, length)
+	if _, err := io.ReadFull(conn, body); err != nil {
+		return 0, nil, fmt.Errorf("error reading message body from peer: %w", err)
+	}
+
+	return body[0], body[1:], nil
+}
+
+func (p *Peer) sendExtensionHandshake(conn net.Conn) error {
+	res, err := bencode.Encode(bencode.Dictionary{
+		bencode.DictionaryValue{
+			Key: "m",
+			Value: bencode.Dictionary{
+				bencode.DictionaryValue{
+					Key:   "ut_metadata",
+					Value: UtMetaDataId,
+				},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("error trying to bencode extension msg")
+	}
+
+	extensionMsg := []byte{}
+	// length = ext protocol id (1) + extended msg id (1) + dict
+	extensionMsg = append(extensionMsg, binary.BigEndian.AppendUint32(nil, uint32(len(res)+1+1))...)
+	extensionMsg = append(extensionMsg, msgIdExtension)
+	extensionMsg = append(extensionMsg, 0) // extended msg id 0 = handshake
+	extensionMsg = append(extensionMsg, []byte(res)...)
+
+	if _, err := conn.Write(extensionMsg); err != nil {
+		return fmt.Errorf("error writing extension handshake to peer")
+	}
+	return nil
+}
+
+// parseExtensionHandshake extracts the peer's ut_metadata id from an extension
+// message payload (payload[0] is the extended msg id, payload[1:] is the dict).
+func (p *Peer) parseExtensionHandshake(payload []byte) error {
+	decoder := bencode.Decoder{Data: payload[1:]}
+
+	decoded, ok := decoder.Decode().(bencode.Dictionary)
+	if !ok {
+		return fmt.Errorf("invalid response for extensions message request")
+	}
+
+	extensionDict, ok := bencode.FindElementInDictionary[bencode.Dictionary](decoded, "m")
+	if !ok {
+		return fmt.Errorf("invalid response for extensions message request. m dict is not found")
+	}
+
+	utMetaDataId, ok := bencode.FindElementInDictionary[int](extensionDict, "ut_metadata")
+	if !ok {
+		return fmt.Errorf("invalid response for extensions message request. m.ut_metadata value is not found")
+	}
+
+	p.MetaDataId = utMetaDataId
+	return nil
+}
+
+// DoExtensionHandshake sends our extension handshake and reads the peer's,
+// storing the peer's ut_metadata id. The peer may send a bitfield or
+// keep-alives first, so we dispatch by message id.
+func (p *Peer) DoExtensionHandshake(conn net.Conn) error {
+	if !p.HasExtensionSupport {
+		return fmt.Errorf("peer does not support extensions")
+	}
+
+	if err := p.sendExtensionHandshake(conn); err != nil {
+		return err
+	}
+
+	for {
+		id, payload, err := readMessage(conn)
+		if err != nil {
+			return err
+		}
+
+		switch id {
+		case msgIdExtension:
+			return p.parseExtensionHandshake(payload)
+		default:
+			// bitfield, keep-alive, anything else: ignore and keep reading
+		}
+	}
 }
 
 func (p *Peer) UnchokePeer(conn net.Conn) error {
-	bitfieldMsgSizeBuff := make([]byte, 4)
-	if _, err := io.ReadFull(conn, bitfieldMsgSizeBuff); err != nil {
-		return fmt.Errorf("error reading bitfield msg size from peer")
-	}
-
-	bitfieldMsg := make([]byte, binary.BigEndian.Uint32(bitfieldMsgSizeBuff))
-	if _, err := io.ReadFull(conn, bitfieldMsg); err != nil {
-		return fmt.Errorf("error reading bitfield msg from peer")
+	if p.HasExtensionSupport {
+		if err := p.sendExtensionHandshake(conn); err != nil {
+			return err
+		}
 	}
 
 	intrestedMsg := []byte{}
 	intrestedMsg = append(intrestedMsg, binary.BigEndian.AppendUint32(nil, 1)...)
-	intrestedMsg = append(intrestedMsg, []byte{2}...)
-
+	intrestedMsg = append(intrestedMsg, msgIdInterested)
 	if _, err := conn.Write(intrestedMsg); err != nil {
-		return fmt.Errorf("error writing intrested msg to peer")
+		return fmt.Errorf("error writing interested msg to peer")
 	}
 
-	unchokeMsgSizeBuff := make([]byte, 4)
-	if _, err := io.ReadFull(conn, unchokeMsgSizeBuff); err != nil {
-		return fmt.Errorf("error reading unchoke msg size from peer")
-	}
+	// Read messages and dispatch by id until we get unchoke. The peer may send
+	// bitfield, extension handshake, and unchoke in any order, plus keep-alives.
+	gotExtension := !p.HasExtensionSupport
+	for {
+		id, payload, err := readMessage(conn)
+		if err != nil {
+			return err
+		}
 
-	unchokeMsg := make([]byte, binary.BigEndian.Uint32(unchokeMsgSizeBuff))
-	if _, err := io.ReadFull(conn, unchokeMsg); err != nil {
-		return fmt.Errorf("error reading unchoke msg from peer")
+		switch id {
+		case msgIdExtension:
+			if err := p.parseExtensionHandshake(payload); err != nil {
+				return err
+			}
+			gotExtension = true
+		case msgIdUnchoke:
+			if gotExtension {
+				return nil
+			}
+		case msgIdBitfield:
+			// ignore
+		default:
+			// keep-alive or anything else: ignore
+		}
 	}
-
-	return nil
 }
 
 func GetPeers(trackerUrl string, hash string, left int) ([]*Peer, error) {
@@ -138,6 +259,10 @@ func (peer *Peer) HandshakeWithPeer(infoHash string, extension bool) (net.Conn, 
 	if _, err := io.ReadFull(conn, res); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("Error while trying to read message from TCP connection: %s", err.Error())
+	}
+
+	if res[25]&0x10 != 0 {
+		peer.HasExtensionSupport = true
 	}
 
 	peer.Id = res[48:]

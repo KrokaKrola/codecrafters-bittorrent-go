@@ -5,22 +5,22 @@ import (
 	"strconv"
 )
 
-type dictionaryValue struct {
-	key   string
-	value any
+type DictionaryValue struct {
+	Key   string
+	Value any
 }
 
-type Dictionary []dictionaryValue
+type Dictionary []DictionaryValue
 
 func (d Dictionary) ToMap() map[string]any {
 	result := make(map[string]any)
 
 	for _, el := range d {
-		if innerDict, ok := el.value.(Dictionary); ok {
-			el.value = innerDict.ToMap()
+		if innerDict, ok := el.Value.(Dictionary); ok {
+			el.Value = innerDict.ToMap()
 		}
 
-		result[el.key] = el.value
+		result[el.Key] = el.Value
 	}
 
 	return result
@@ -30,8 +30,8 @@ func FindElementInDictionary[T any](d Dictionary, key string) (T, bool) {
 	var res T
 
 	for _, el := range d {
-		if el.key == key {
-			if value, ok := el.value.(T); ok {
+		if el.Key == key {
+			if value, ok := el.Value.(T); ok {
 				res = value
 				return res, true
 			} else {
@@ -97,8 +97,8 @@ func (d *Decoder) Decode() any {
 
 			value := d.Decode()
 			result = append(result, struct {
-				key   string
-				value any
+				Key   string
+				Value any
 			}{
 				key,
 				value,
