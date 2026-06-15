@@ -67,7 +67,6 @@ func (p *Peer) sendExtensionHandshake(conn net.Conn) error {
 	}
 
 	extensionMsg := []byte{}
-	// length = ext protocol id (1) + extended msg id (1) + dict
 	extensionMsg = append(extensionMsg, binary.BigEndian.AppendUint32(nil, uint32(len(res)+1+1))...)
 	extensionMsg = append(extensionMsg, msgIdExtension)
 	extensionMsg = append(extensionMsg, 0) // extended msg id 0 = handshake
@@ -79,8 +78,6 @@ func (p *Peer) sendExtensionHandshake(conn net.Conn) error {
 	return nil
 }
 
-// parseExtensionHandshake extracts the peer's ut_metadata id from an extension
-// message payload (payload[0] is the extended msg id, payload[1:] is the dict).
 func (p *Peer) parseExtensionHandshake(payload []byte) error {
 	decoder := bencode.Decoder{Data: payload[1:]}
 
@@ -144,8 +141,6 @@ func (p *Peer) UnchokePeer(conn net.Conn) error {
 		return fmt.Errorf("error writing interested msg to peer")
 	}
 
-	// Read messages and dispatch by id until we get unchoke. The peer may send
-	// bitfield, extension handshake, and unchoke in any order, plus keep-alives.
 	gotExtension := !p.HasExtensionSupport
 	for {
 		id, payload, err := readMessage(conn)
@@ -163,10 +158,8 @@ func (p *Peer) UnchokePeer(conn net.Conn) error {
 			if gotExtension {
 				return nil
 			}
-		case msgIdBitfield:
-			// ignore
 		default:
-			// keep-alive or anything else: ignore
+			// ignore
 		}
 	}
 }
