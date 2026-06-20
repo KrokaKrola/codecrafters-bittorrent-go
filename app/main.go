@@ -289,6 +289,67 @@ func main() {
 
 		fmt.Println("Peer ID:", hex.EncodeToString(magnet.Peers[0].Id))
 		fmt.Println("Peer Metadata Extension ID:", peer.MetaDataId)
+	case "magnet_download":
+		// ./your_program.sh magnet_download -o /tmp/sample <magnet_link>
+		if len(os.Args) < 5 {
+			fmt.Println("Invalid number of arguments")
+			os.Exit(1)
+		}
+
+		outputPath := os.Args[3]
+		magnetLink := os.Args[4]
+
+		mg, err := magnet.NewMagnet(magnetLink)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		if len(mg.Peers) == 0 {
+			fmt.Println("no peers found")
+			os.Exit(1)
+		}
+
+		p := mg.Peers[0]
+
+		peerConn, err := p.HandshakeWithPeer(string(mg.InfoHash), true)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		defer peerConn.Close()
+
+		if err := p.DoExtensionHandshake(peerConn); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		metadataResponse, err := p.DoMetadataRequest(peerConn)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		mg.Length = metadataResponse.Length
+		mg.PieceLength = metadataResponse.PieceLength
+		mg.Pieces = metadataResponse.Pieces
+
+		for i := 0; i < len(mg.Pieces); i += 20 {
+			mg.PieceParts = append(mg.PieceParts, []byte(mg.Pieces[i:i+20]))
+		}
+
+		file, err := os.OpenFile(outputPath, os.O_WRONLY|os.O_CREATE, 0600)
+		if err != nil {
+			fmt.Println("Error opening file", outputPath)
+			os.Exit(1)
+		}
+		defer file.Close()
+
+		if err := mg.DownloadFile(outputPath, file); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
 	case "magnet_download_piece":
 		// ./your_program.sh magnet_download_piece -o /tmp/test-piece-0 <magnet_link> <piece_index>
 		if len(os.Args) < 6 {
