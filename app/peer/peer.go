@@ -62,6 +62,7 @@ func (p *Peer) sendExtensionHandshake(conn net.Conn) error {
 			},
 		},
 	})
+
 	if err != nil {
 		return fmt.Errorf("error trying to bencode extension msg")
 	}
@@ -100,9 +101,35 @@ func (p *Peer) parseExtensionHandshake(payload []byte) error {
 	return nil
 }
 
-// DoExtensionHandshake sends our extension handshake and reads the peer's,
-// storing the peer's ut_metadata id. The peer may send a bitfield or
-// keep-alives first, so we dispatch by message id.
+func (p *Peer) sendMetadataRequest(conn net.Conn) error {
+	res, err := bencode.Encode(bencode.Dictionary{
+		bencode.DictionaryValue{
+			Key:   "msg_type",
+			Value: 0,
+		},
+		bencode.DictionaryValue{
+			Key:   "piece",
+			Value: 0,
+		},
+	})
+
+	if err != nil {
+		return fmt.Errorf("error trying to bencode extension metadata request")
+	}
+
+	extensionMsg := []byte{}
+	extensionMsg = append(extensionMsg, binary.BigEndian.AppendUint32(nil, uint32(len(res)+1+1))...)
+	extensionMsg = append(extensionMsg, msgIdExtension)
+	extensionMsg = append(extensionMsg, byte(p.MetaDataId))
+	extensionMsg = append(extensionMsg, []byte(res)...)
+
+	if _, err := conn.Write(extensionMsg); err != nil {
+		return fmt.Errorf("error writing extension metadata request to peer")
+	}
+
+	return nil
+}
+
 func (p *Peer) DoExtensionHandshake(conn net.Conn) error {
 	if !p.HasExtensionSupport {
 		return fmt.Errorf("peer does not support extensions")
@@ -121,6 +148,30 @@ func (p *Peer) DoExtensionHandshake(conn net.Conn) error {
 		switch id {
 		case msgIdExtension:
 			return p.parseExtensionHandshake(payload)
+		default:
+			// bitfield, keep-alive, anything else: ignore and keep reading
+		}
+	}
+}
+
+func (p *Peer) DoMetadataRequest(conn net.Conn) error {
+	if !p.HasExtensionSupport {
+		return fmt.Errorf("peer does not support extensions")
+	}
+
+	if err := p.sendMetadataRequest(conn); err != nil {
+		return err
+	}
+
+	for {
+		id, _, err := readMessage(conn)
+		if err != nil {
+			return err
+		}
+
+		switch id {
+		case msgIdExtension:
+			return nil
 		default:
 			// bitfield, keep-alive, anything else: ignore and keep reading
 		}

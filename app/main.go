@@ -289,6 +289,34 @@ func main() {
 
 		fmt.Println("Peer ID:", hex.EncodeToString(magnet.Peers[0].Id))
 		fmt.Println("Peer Metadata Extension ID:", peer.MetaDataId)
+	case "magnet_info":
+		magnetLink := os.Args[2]
+
+		magnet, err := magnet.NewMagnet(magnetLink)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		peer := magnet.Peers[0]
+
+		peerConn, err := peer.HandshakeWithPeer(string(magnet.InfoHash), true)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		defer peerConn.Close()
+
+		if err := peer.DoExtensionHandshake(peerConn); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		if err := peer.DoMetadataRequest(peerConn); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
 	default:
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
