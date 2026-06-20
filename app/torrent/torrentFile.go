@@ -143,19 +143,37 @@ func (btFile *TorrentFile) GetPiece(peerConn net.Conn, pieceIndex int) ([]byte, 
 			return nil, fmt.Errorf("error writing request msg to peer")
 		}
 
-		pieceMsgBuffSize := make([]byte, 4)
-		if _, err := io.ReadFull(peerConn, pieceMsgBuffSize); err != nil {
-			return nil, fmt.Errorf("error reading msg size for block request")
+		var block []byte
+		for {
+			pieceMsgBuffSize := make([]byte, 4)
+			if _, err := io.ReadFull(peerConn, pieceMsgBuffSize); err != nil {
+				return nil, fmt.Errorf("error reading msg size for block request")
+			}
+
+			msgLen := binary.BigEndian.Uint32(pieceMsgBuffSize)
+
+			if msgLen == 0 {
+				// keep-alive
+				continue
+			}
+
+			pieceMsg := make([]byte, msgLen)
+			if _, err := io.ReadFull(peerConn, pieceMsg); err != nil {
+				return nil, fmt.Errorf("error reading block msg from peer")
+			}
+
+			// msgID 7 = piece; skip other messages (choke, unchoke, have, etc.)
+			if pieceMsg[0] != 7 {
+				continue
+			}
+
+			if msgLen < 9 {
+				return nil, fmt.Errorf("piece message too short: %d", msgLen)
+			}
+
+			block = pieceMsg[9:]
+			break
 		}
-
-		msgLen := binary.BigEndian.Uint32(pieceMsgBuffSize)
-
-		pieceMsg := make([]byte, msgLen)
-		if _, err := io.ReadFull(peerConn, pieceMsg); err != nil {
-			return nil, fmt.Errorf("error reading block msg from peer")
-		}
-
-		block := pieceMsg[9:]
 		blocks = append(blocks, block)
 	}
 
