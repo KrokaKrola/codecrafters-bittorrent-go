@@ -289,6 +289,91 @@ func main() {
 
 		fmt.Println("Peer ID:", hex.EncodeToString(magnet.Peers[0].Id))
 		fmt.Println("Peer Metadata Extension ID:", peer.MetaDataId)
+	case "magnet_download_piece":
+		// ./your_program.sh magnet_download_piece -o /tmp/test-piece-0 <magnet_link> <piece_index>
+		if len(os.Args) < 6 {
+			fmt.Println("Invalid number of arguments")
+			os.Exit(1)
+		}
+
+		outputPath := os.Args[3]
+		magnetLink := os.Args[4]
+		pieceIndexStr := os.Args[5]
+
+		pieceIndex, err := strconv.Atoi(pieceIndexStr)
+		if err != nil {
+			fmt.Println("piece_index is not a number")
+			os.Exit(1)
+		}
+
+		mg, err := magnet.NewMagnet(magnetLink)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		if len(mg.Peers) == 0 {
+			fmt.Println("no peers found")
+			os.Exit(1)
+		}
+
+		p := mg.Peers[0]
+
+		peerConn, err := p.HandshakeWithPeer(string(mg.InfoHash), true)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		defer peerConn.Close()
+
+		if err := p.DoExtensionHandshake(peerConn); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		metadataResponse, err := p.DoMetadataRequest(peerConn)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		mg.Length = metadataResponse.Length
+		mg.PieceLength = metadataResponse.PieceLength
+		mg.Pieces = metadataResponse.Pieces
+
+		for i := 0; i < len(mg.Pieces); i += 20 {
+			mg.PieceParts = append(mg.PieceParts, []byte(mg.Pieces[i:i+20]))
+		}
+
+		if err := p.SendInterested(peerConn); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		piece, err := mg.GetPiece(peerConn, pieceIndex)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		pieceHash, err := stringutil.CreateSha1Hash(piece, true)
+		if err != nil {
+			fmt.Println("error creating hash for received piece")
+			os.Exit(1)
+		}
+
+		if pieceHash != hex.EncodeToString(mg.PieceParts[pieceIndex]) {
+			fmt.Println("piece hash is invalid")
+			os.Exit(1)
+		}
+
+		if err := os.WriteFile(outputPath, piece, 0644); err != nil {
+			fmt.Println("error saving piece to", outputPath)
+			os.Exit(1)
+		}
+
+		fmt.Println("Piece", pieceIndex, "downloaded to", outputPath)
+
 	case "magnet_info":
 		magnetLink := os.Args[2]
 

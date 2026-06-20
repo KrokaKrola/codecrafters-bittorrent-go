@@ -1,9 +1,13 @@
 package magnet
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"io"
+	"net"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/codecrafters-io/bittorrent-starter-go/app/peer"
@@ -18,6 +22,58 @@ type Magnet struct {
 	Pieces      string
 	Length      int
 	PieceParts  [][]byte
+}
+
+const infoBlockSize = 16384
+
+func (mg *Magnet) GetPiece(conn net.Conn, pieceIndex int) ([]byte, error) {
+	actualPieceLength := mg.PieceLength
+	if pieceIndex == len(mg.PieceParts)-1 {
+		actualPieceLength = mg.Length - (pieceIndex * mg.PieceLength)
+	}
+
+	var blocks [][]byte
+	for begin := uint32(0); begin < uint32(actualPieceLength); begin += infoBlockSize {
+		length := min(infoBlockSize, uint32(actualPieceLength)-begin)
+
+		requestMsg := []byte{}
+		requestMsg = append(requestMsg, binary.BigEndian.AppendUint32(nil, 13)...)
+		requestMsg = append(requestMsg, byte(6))
+		requestMsg = append(requestMsg, binary.BigEndian.AppendUint32(nil, uint32(pieceIndex))...)
+		requestMsg = append(requestMsg, binary.BigEndian.AppendUint32(nil, begin)...)
+		requestMsg = append(requestMsg, binary.BigEndian.AppendUint32(nil, length)...)
+
+		if _, err := conn.Write(requestMsg); err != nil {
+			return nil, fmt.Errorf("error writing request msg to peer")
+		}
+
+		var block []byte
+		for {
+			lenBuf := make([]byte, 4)
+			if _, err := io.ReadFull(conn, lenBuf); err != nil {
+				return nil, fmt.Errorf("error reading msg size for block request")
+			}
+			msgLen := binary.BigEndian.Uint32(lenBuf)
+			if msgLen == 0 {
+				continue
+			}
+			pieceMsg := make([]byte, msgLen)
+			if _, err := io.ReadFull(conn, pieceMsg); err != nil {
+				return nil, fmt.Errorf("error reading block msg from peer")
+			}
+			if pieceMsg[0] != 7 {
+				continue
+			}
+			if msgLen < 9 {
+				return nil, fmt.Errorf("piece message too short: %d", msgLen)
+			}
+			block = pieceMsg[9:]
+			break
+		}
+		blocks = append(blocks, block)
+	}
+
+	return slices.Concat(blocks...), nil
 }
 
 func NewMagnet(link string) (*Magnet, error) {

@@ -264,6 +264,25 @@ func (p *Peer) UnchokePeer(conn net.Conn) error {
 	}
 }
 
+func (p *Peer) SendInterested(conn net.Conn) error {
+	intrestedMsg := []byte{}
+	intrestedMsg = append(intrestedMsg, binary.BigEndian.AppendUint32(nil, 1)...)
+	intrestedMsg = append(intrestedMsg, msgIdInterested)
+	if _, err := conn.Write(intrestedMsg); err != nil {
+		return fmt.Errorf("error writing interested msg to peer")
+	}
+
+	for {
+		id, _, err := readMessage(conn)
+		if err != nil {
+			return err
+		}
+		if id == msgIdUnchoke {
+			return nil
+		}
+	}
+}
+
 func GetPeers(trackerUrl string, hash string, left int) ([]*Peer, error) {
 	requestUrl, err := url.Parse(trackerUrl)
 	if err != nil {
