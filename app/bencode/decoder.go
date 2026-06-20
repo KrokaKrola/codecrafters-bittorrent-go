@@ -53,7 +53,7 @@ const (
 
 type Decoder struct {
 	Data []byte
-	pos  int
+	Pos  int
 	Err  error
 }
 
@@ -62,7 +62,7 @@ func (d *Decoder) Decode() any {
 		return nil
 	}
 
-	if d.pos >= len(d.Data) {
+	if d.Pos >= len(d.Data) {
 		d.Err = fmt.Errorf("invalid input format: %s", d.Data)
 		return nil
 	}
@@ -79,7 +79,7 @@ func (d *Decoder) Decode() any {
 				return nil
 			}
 
-			if d.pos >= len(d.Data) {
+			if d.Pos >= len(d.Data) {
 				d.Err = fmt.Errorf("invalid dictionary format: %s", d.Data)
 				return nil
 			}
@@ -108,10 +108,10 @@ func (d *Decoder) Decode() any {
 		return result
 	case integerBencodeIdentifier:
 		d.readByte()
-		startPos := d.pos
+		startPos := d.Pos
 		var endOfNumber int
 
-		for i := d.pos; i < len(d.Data); i++ {
+		for i := d.Pos; i < len(d.Data); i++ {
 			if d.readByte() == endOfIdentifier {
 				endOfNumber = i
 				break
@@ -139,7 +139,7 @@ func (d *Decoder) Decode() any {
 				return nil
 			}
 
-			if d.pos >= len(d.Data) {
+			if d.Pos >= len(d.Data) {
 				d.Err = fmt.Errorf("invalid list format: %s", d.Data)
 				return nil
 			}
@@ -155,10 +155,10 @@ func (d *Decoder) Decode() any {
 
 		return result
 	default:
-		initialPos := d.pos
+		initialPos := d.Pos
 		var firstColonIndex int
 
-		for i := d.pos; i < len(d.Data); i++ {
+		for i := d.Pos; i < len(d.Data); i++ {
 			if d.readByte() == columnIdentifier {
 				firstColonIndex = i
 				break
@@ -173,23 +173,23 @@ func (d *Decoder) Decode() any {
 			return nil
 		}
 
-		if d.pos+length > len(d.Data) {
+		if d.Pos+length > len(d.Data) {
 			d.Err = fmt.Errorf("invalid string length: %d", length)
 			return nil
 		}
 
-		d.pos += length
-		return string(d.Data[firstColonIndex+1 : d.pos])
+		d.Pos += length
+		return string(d.Data[firstColonIndex+1 : d.Pos])
 	}
 }
 
 func (d *Decoder) readByte() byte {
-	b := d.Data[d.pos]
-	d.pos++
+	b := d.Data[d.Pos]
+	d.Pos++
 	return b
 }
 
 func (d *Decoder) peekByte() byte {
-	b := d.Data[d.pos]
+	b := d.Data[d.Pos]
 	return b
 }

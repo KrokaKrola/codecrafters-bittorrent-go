@@ -313,10 +313,32 @@ func main() {
 			os.Exit(1)
 		}
 
-		if err := peer.DoMetadataRequest(peerConn); err != nil {
+		metadataResponse, err := peer.DoMetadataRequest(peerConn)
+		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
+
+		magnet.Length = metadataResponse.Length
+		magnet.Pieces = metadataResponse.Pieces
+		magnet.PieceLength = metadataResponse.PieceLength
+
+		fmt.Println("Tracker URL:", magnet.TrackerUrl)
+		fmt.Println("Length:", magnet.Length)
+		fmt.Println("Info Hash:", hex.EncodeToString(magnet.InfoHash))
+		fmt.Println("Piece Length:", magnet.PieceLength)
+		fmt.Println("Piece Hashes:")
+
+		var piecesParts [][]byte
+
+		for i := 0; i < len(magnet.Pieces); i += 20 {
+			piece := []byte(magnet.Pieces[i : i+20])
+			piecesParts = append(piecesParts, piece)
+			fmt.Println(hex.EncodeToString(piece))
+		}
+
+		magnet.PieceParts = piecesParts
+
 	default:
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)

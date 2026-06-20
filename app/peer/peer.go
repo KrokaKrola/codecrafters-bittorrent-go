@@ -154,24 +154,73 @@ func (p *Peer) DoExtensionHandshake(conn net.Conn) error {
 	}
 }
 
-func (p *Peer) DoMetadataRequest(conn net.Conn) error {
+type MetadataResponse struct {
+	Length      int
+	PieceLength int
+	Pieces      string
+}
+
+func (p *Peer) DoMetadataRequest(conn net.Conn) (*MetadataResponse, error) {
 	if !p.HasExtensionSupport {
-		return fmt.Errorf("peer does not support extensions")
+		return nil, fmt.Errorf("peer does not support extensions")
 	}
 
 	if err := p.sendMetadataRequest(conn); err != nil {
-		return err
+		return nil, err
 	}
 
 	for {
-		id, _, err := readMessage(conn)
+		id, payload, err := readMessage(conn)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		switch id {
 		case msgIdExtension:
-			return nil
+			msgDecoder := bencode.Decoder{Data: payload[1:]}
+			msgDecoder.Decode()
+
+			if msgDecoder.Err != nil {
+				return nil, fmt.Errorf("error trying to decode response from metadata request: %s", msgDecoder.Err.Error())
+			}
+
+			infoDecoder := bencode.Decoder{Data: payload[msgDecoder.Pos+1:]}
+
+			res := infoDecoder.Decode()
+			if infoDecoder.Err != nil {
+				return nil, fmt.Errorf("error trying to decode response from metadata request: %s", infoDecoder.Err.Error())
+			}
+
+			if infoDecoder.Err != nil {
+				return nil, fmt.Errorf("error trying to decode response from metadata request: %s", infoDecoder.Err.Error())
+			}
+
+			dict, ok := res.(bencode.Dictionary)
+			if !ok {
+				return nil, fmt.Errorf("invalid response from metadata request")
+			}
+
+			pieceLength, ok := bencode.FindElementInDictionary[int](dict, "piece length")
+			if !ok {
+				return nil, fmt.Errorf("piece length is not found in the metadata response")
+			}
+
+			length, ok := bencode.FindElementInDictionary[int](dict, "length")
+			if !ok {
+				return nil, fmt.Errorf("length is not found in the metadata response")
+			}
+
+			pieces, ok := bencode.FindElementInDictionary[string](dict, "pieces")
+			if !ok {
+				return nil, fmt.Errorf("pieces is not found in the metadata response")
+			}
+
+			return &MetadataResponse{
+				Length:      length,
+				PieceLength: pieceLength,
+				Pieces:      pieces,
+			}, nil
+
 		default:
 			// bitfield, keep-alive, anything else: ignore and keep reading
 		}

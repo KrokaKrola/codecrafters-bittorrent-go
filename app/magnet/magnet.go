@@ -10,10 +10,14 @@ import (
 )
 
 type Magnet struct {
-	InfoHash   []byte // info hash from xt param
-	FileName   string // dn param
-	TrackerUrl string // tr
-	Peers      []*peer.Peer
+	InfoHash    []byte // info hash from xt param
+	FileName    string // dn param
+	TrackerUrl  string // tr
+	Peers       []*peer.Peer
+	PieceLength int
+	Pieces      string
+	Length      int
+	PieceParts  [][]byte
 }
 
 func NewMagnet(link string) (*Magnet, error) {
